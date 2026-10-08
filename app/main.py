@@ -1,0 +1,48 @@
+"""FastAPI application entry point. Run with: uvicorn app.main:app --reload"""
+from fastapi import Depends, FastAPI
+from fastapi.responses import JSONResponse
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+
+import app.models_registry  # noqa: F401  (registers every model; mappers need them all)
+from app.core.config import get_settings
+from app.core.database import get_db
+from app.core.errors import register_error_handlers
+from app.core.logging import configure_logging
+from app.core.middleware import register_middleware
+from app.core.observability import init_sentry
+from app.modules.auth.router import router as auth_router
+from app.modules.dashboard.router import router as dashboard_router
+from app.modules.documents.router import router as documents_router
+from app.modules.vehicles.router import router as vehicles_router
+
+settings = get_settings()
+configure_logging(settings.log_level, settings.log_format)
+init_sentry()
+
+app = FastAPI(title=settings.app_name)
+register_error_handlers(app)
+register_middleware(app)
+
+app.include_router(auth_router)
+app.include_router(vehicles_router)
+app.include_router(documents_router)
+app.include_router(dashboard_router)
+
+
+# func to report that the process is alive
+@app.get("/health", tags=["meta"])
+def health() -> dict[str, str]:
+    """Liveness probe: answers as long as the process is running."""
+    return {"status": "ok"}
+
+
+# func to report that the app can serve traffic
+@app.get("/health/ready", tags=["meta"])
+def ready(db: Session = Depends(get_db)):
+    """Readiness probe: 200 if the database answers, 503 if it does not."""
+    try:
+        db.execute(text("SELECT 1"))
+    except Exception:  # noqa: BLE001 - any DB failure means "not ready"
+        return JSONResponse({"status": "unavailable"}, status_code=503)
+    return {"status": "ready"}
