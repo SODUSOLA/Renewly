@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import field_validator, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -43,6 +43,10 @@ class Settings(BaseSettings):
     # Browser origins allowed to call the API (comma separated), e.g. the frontend's
     # public URL. The Vite dev server is allowed by default.
     cors_origins: str = "http://localhost:5173"
+    # How many reverse proxies sit between the internet and the API (Railway's edge = 1).
+    # Used to find the real client IP in X-Forwarded-For. 0 means "ignore the header".
+    # Never set this higher than the real number: that lets callers spoof their IP.
+    trusted_proxy_hops: int = Field(default=0, ge=0, le=5)
     # Public URL of the web app, used for links in emails (e.g. password reset).
     # Empty means emails carry the bare token instead of a link.
     frontend_url: str = ""

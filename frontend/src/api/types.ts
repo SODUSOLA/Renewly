@@ -9,11 +9,14 @@ export type DocumentType =
 
 export type DocumentStatus = "valid" | "expiring_soon" | "expired";
 
+export type ReminderStyle = "each" | "digest";
+
 export interface User {
   id: string;
   email: string;
   full_name: string;
   timezone: string;
+  reminder_style: ReminderStyle;
   created_at: string;
 }
 

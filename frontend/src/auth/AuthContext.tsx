@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, refreshAccessToken, setUnauthorizedHandler, tokenStore } from "../api/client";
-import type { User } from "../api/types";
+import type { ReminderStyle, User } from "../api/types";
 
 interface AuthState {
   user: User | null;
@@ -12,6 +12,14 @@ interface AuthState {
   login: (email: string, password: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  updateProfile: (changes: ProfileChanges) => Promise<void>;
+}
+
+// The settings a user can change about themselves (email is fixed).
+export interface ProfileChanges {
+  full_name?: string;
+  timezone?: string;
+  reminder_style?: ReminderStyle;
 }
 
 export interface RegisterInput {
@@ -116,9 +124,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     channel.current?.postMessage("logout");
   }, [signOut]);
 
+  const updateProfile = useCallback(async (changes: ProfileChanges) => {
+    setUser(await api<User>("/auth/me", { method: "PATCH", body: changes }));
+  }, []);
+
   const value = useMemo(
-    () => ({ user, loading, sessionExpired, login, register, logout }),
-    [user, loading, sessionExpired, login, register, logout],
+    () => ({ user, loading, sessionExpired, login, register, logout, updateProfile }),
+    [user, loading, sessionExpired, login, register, logout, updateProfile],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

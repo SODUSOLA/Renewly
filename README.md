@@ -6,6 +6,7 @@ lapse.
 
 - Reminders go out at configurable offsets (default 90, 30, 14, 7 and 1 days before expiry), at 8am **in each user's own timezone**.
 - Each reminder is sent **exactly once**, even if the job runs many times or two workers collide.
+- Choose one email per reminder or a **single daily digest** of everything due (Settings page).
 - A dashboard groups documents as **expired / expiring soon / valid** with days left.
 - "Mark as renewed" moves the expiry forward, keeps a renewal history and re-arms the reminders.
 
@@ -86,6 +87,7 @@ will actually touch:
 | `SECRET_KEY` | required | Signs login tokens (32+ characters in production) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Celery broker and rate-limit counters |
 | `CORS_ORIGINS` | `http://localhost:5173` | Web app origin(s) allowed to call the API |
+| `TRUSTED_PROXY_HOPS` | `0` | Proxies in front of the API (Railway = 1), for real client IPs in rate limits; see [deployment.md](docs/deployment.md#client-ips-and-rate-limits) |
 | `FRONTEND_URL` | empty | Used for the link in password-reset emails |
 | `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token lifetime; an `HttpOnly` refresh cookie (30 days sliding, 90 max) renews it silently |
 | `COOKIE_SAMESITE` | `lax` | Needs the web app and API on one site; see [deployment.md](docs/deployment.md#sessions-and-cookies) |

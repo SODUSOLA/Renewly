@@ -172,3 +172,28 @@ describe("refreshAccessToken()", () => {
     await expect(refreshAccessToken()).rejects.toMatchObject({ status: 500 });
   });
 });
+
+describe("API address", () => {
+  afterEach(() => {
+    vi.unstubAllEnvs();
+    vi.resetModules();
+  });
+
+  it("supports a same-origin prefix such as /api (used behind a proxy)", async () => {
+    vi.stubEnv("VITE_API_URL", "/api/");
+    vi.resetModules();
+    const fresh = await import("./client");
+    const { calls } = mockApi({ "GET /api/dashboard": () => ({ body: { ok: true } }) });
+    await expect(fresh.api("/dashboard")).resolves.toEqual({ ok: true });
+    expect(calls[0].key).toBe("GET /api/dashboard");
+  });
+
+  it("supports an absolute address on another domain", async () => {
+    vi.stubEnv("VITE_API_URL", "https://api.example.com");
+    vi.resetModules();
+    const fresh = await import("./client");
+    const { fake } = mockApi({ "GET /dashboard": () => ({ body: {} }) });
+    await fresh.api("/dashboard");
+    expect(String(fake.mock.calls[0][0])).toBe("https://api.example.com/dashboard");
+  });
+});

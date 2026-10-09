@@ -19,6 +19,7 @@ export function Layout() {
             <NavLink to="/dashboard">Dashboard</NavLink>
             <NavLink to="/documents">Documents</NavLink>
             <NavLink to="/vehicles">Vehicles</NavLink>
+            <NavLink to="/settings">Settings</NavLink>
           </nav>
           <div className="account">
             <span className="muted small account-name">{user?.full_name}</span>

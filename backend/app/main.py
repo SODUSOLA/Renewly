@@ -8,6 +8,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 import app.models_registry  # noqa: F401  (registers every model; mappers need them all)
+from app.core.client_ip import log_proxy_configuration
 from app.core.config import get_settings
 from app.core.database import get_db
 from app.core.errors import register_error_handlers
@@ -23,6 +24,7 @@ logger = logging.getLogger(__name__)
 settings = get_settings()
 configure_logging(settings.log_level, settings.log_format)
 init_sentry()
+log_proxy_configuration(settings)
 
 app = FastAPI(title=settings.app_name)
 register_error_handlers(app)

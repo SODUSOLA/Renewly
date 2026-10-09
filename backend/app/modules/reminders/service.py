@@ -11,6 +11,7 @@ How "exactly once" works
    PENDING_TIMEOUT, and the email provider's idempotency key stops a duplicate
    if the first attempt actually went through.
 """
+import hashlib
 import logging
 import uuid
 from collections.abc import Callable
@@ -22,11 +23,12 @@ from sqlalchemy import and_, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
-from app.common.enums import ReminderChannel, ReminderStatus
+from app.common.enums import ReminderChannel, ReminderStatus, ReminderStyle
+from app.core.config import get_settings
 from app.modules.auth.models import User
 from app.modules.documents.models import Document
 from app.modules.notifications.email import EmailMessage, send_email
-from app.modules.notifications.rendering import render_expiry_reminder
+from app.modules.notifications.rendering import DigestItem, render_expiry_digest, render_expiry_reminder
 from app.modules.reminders.models import ReminderLog
 
 logger = logging.getLogger(__name__)
@@ -162,19 +164,69 @@ def build_message(due: DueReminder, log_id: uuid.UUID) -> EmailMessage:
     )
 
 
-# func to run the whole reminder job once
-def run_due_reminders(
-    db: Session, now: datetime, send: SendFunction = send_email
-) -> ReminderRunSummary:
-    """Send every reminder that is due at `now` and has not been sent yet.
+# func to record how a send attempt ended for several reminders at once
+def _finish_many(
+    db: Session, log_ids: list[uuid.UUID], status: ReminderStatus, now: datetime, error: str | None
+) -> None:
+    """Mark all the given log rows sent or failed in one statement and commit."""
+    db.execute(
+        update(ReminderLog)
+        .where(ReminderLog.id.in_(log_ids))
+        .values(status=status, sent_at=now, error=error)
+    )
+    db.commit()
 
-    Safe to run as often as you like (the Beat schedule runs it hourly): the
-    claim step guarantees one email per reminder, and failed sends are retried
-    on later runs while the reminder is still due. One failure never stops the
-    others. `send` is injectable so tests can use a fake.
+
+# func to build the key that stops a digest being delivered twice
+def digest_idempotency_key(log_ids: list[uuid.UUID]) -> str:
+    """A key that depends only on WHICH reminders the digest covers, not their order.
+
+    If a send is retried (a timeout after the provider already accepted it), the same
+    reminders produce the same key, so the provider drops the duplicate.
     """
-    summary = ReminderRunSummary()
-    for due in find_due_reminders(db, now):
+    joined = ",".join(sorted(str(i) for i in log_ids))
+    return "digest-" + hashlib.sha256(joined.encode()).hexdigest()[:32]
+
+
+# func to build one email covering several claimed reminders
+def build_digest_message(user: User, claimed: list[tuple[DueReminder, uuid.UUID]]) -> EmailMessage:
+    """Render the digest for `user`, most urgent document first.
+
+    Ties on urgency are ordered by title so the email is stable between runs.
+    """
+    ordered = sorted(claimed, key=lambda c: (c[0].days_left, c[0].document.title.lower()))
+    items = []
+    for due, _ in ordered:
+        vehicle = due.document.vehicle
+        items.append(
+            DigestItem(
+                title=due.document.title,
+                doc_type=due.document.type,
+                custom_type_label=due.document.custom_type_label,
+                expiry_date=due.document.expiry_date,
+                days_left=due.days_left,
+                vehicle_label=f"{vehicle.nickname} ({vehicle.plate_number})" if vehicle else None,
+            )
+        )
+    frontend = get_settings().frontend_url.rstrip("/")
+    subject, html, text = render_expiry_digest(
+        full_name=user.full_name, items=items, settings_url=f"{frontend}/settings" if frontend else None
+    )
+    return EmailMessage(
+        to=user.email,
+        subject=subject,
+        html=html,
+        text=text,
+        idempotency_key=digest_idempotency_key([log_id for _, log_id in claimed]),
+    )
+
+
+# func to send one email per due reminder
+def _send_each(
+    db: Session, dues: list[DueReminder], now: datetime, send: SendFunction, summary: ReminderRunSummary
+) -> None:
+    """Claim, send and record each reminder on its own; one failure never stops the rest."""
+    for due in dues:
         log_id = claim_reminder(db, due, now)
         if log_id is None:
             summary.skipped += 1
@@ -188,4 +240,60 @@ def run_due_reminders(
         else:
             _finish(db, log_id, ReminderStatus.SENT, now, None)
             summary.sent += 1
+
+
+# func to send one combined email for all of a user's due reminders
+def _send_digest(
+    db: Session, user: User, dues: list[DueReminder], now: datetime, send: SendFunction, summary: ReminderRunSummary
+) -> None:
+    """Claim every due reminder, send ONE email covering the ones we won, record them together.
+
+    Reminders already sent or claimed elsewhere are left out (and counted as skipped), so
+    switching styles mid-day or a retry never repeats a reminder. If the single send fails,
+    every reminder in it is marked failed and retried on the next run.
+    """
+    claimed: list[tuple[DueReminder, uuid.UUID]] = []
+    for due in dues:
+        log_id = claim_reminder(db, due, now)
+        if log_id is None:
+            summary.skipped += 1
+        else:
+            claimed.append((due, log_id))
+    if not claimed:
+        return
+    log_ids = [log_id for _, log_id in claimed]
+    try:
+        send(build_digest_message(user, claimed))
+    except Exception as error:  # noqa: BLE001 - any failure must be recorded
+        logger.warning("Digest for user %s failed: %s", user.id, error)
+        _finish_many(db, log_ids, ReminderStatus.FAILED, now, str(error)[:1000])
+        summary.failed += len(claimed)
+    else:
+        _finish_many(db, log_ids, ReminderStatus.SENT, now, None)
+        summary.sent += len(claimed)
+
+
+# func to run the whole reminder job once
+def run_due_reminders(
+    db: Session, now: datetime, send: SendFunction = send_email
+) -> ReminderRunSummary:
+    """Send every reminder that is due at `now` and has not been sent yet.
+
+    Safe to run as often as you like (the Beat schedule runs it hourly): the
+    claim step guarantees each reminder is delivered once, and failed sends are
+    retried on later runs while the reminder is still due. Reminders are grouped by
+    user: users on the "digest" style get one email for the group, everyone else gets
+    one email per reminder. A failure for one user never stops the others. `send` is
+    injectable so tests can use a fake.
+    """
+    summary = ReminderRunSummary()
+    by_user: dict[uuid.UUID, list[DueReminder]] = {}
+    for due in find_due_reminders(db, now):
+        by_user.setdefault(due.user.id, []).append(due)
+    for dues in by_user.values():
+        user = dues[0].user
+        if user.reminder_style == ReminderStyle.DIGEST:
+            _send_digest(db, user, dues, now, send, summary)
+        else:
+            _send_each(db, dues, now, send, summary)
     return summary

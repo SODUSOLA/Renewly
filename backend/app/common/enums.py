@@ -43,3 +43,11 @@ class DocumentStatus(str, enum.Enum):
     VALID = "valid"
     EXPIRING_SOON = "expiring_soon"
     EXPIRED = "expired"
+
+
+# class for how a user wants their reminders delivered
+class ReminderStyle(str, enum.Enum):
+    """`EACH`: one email per document reminder. `DIGEST`: one email a day with everything due."""
+
+    EACH = "each"
+    DIGEST = "digest"

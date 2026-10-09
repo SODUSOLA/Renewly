@@ -77,6 +77,22 @@ This is the heart of the product, so it is built to be boring and safe.
 4. **Send** through Resend with an `Idempotency-Key` of the log row id, so a retry after an ambiguous failure cannot deliver twice.
 5. **Record** `sent`, or `failed` with the error. One failure never stops the rest of the run.
 
+### Daily digest
+
+Each user chooses `each` (default) or `digest`. The job groups the day's due reminders by
+user, then:
+
+- **`each`:** claim, send and record every reminder separately (above).
+- **`digest`:** claim every due reminder for that user, send **one** email covering the ones
+  that were won, then mark all of them `sent` (or all `failed`) together.
+
+The safety properties carry over unchanged because the claim is still per reminder: a
+reminder already sent (even individually, before the user switched style) is left out; two
+workers cannot both claim it; a failed digest is retried as one email on the next run. The
+provider idempotency key is a hash of *which* reminders the digest covers, so a retry of the
+same set cannot be delivered twice. A digest is only sent on a day when something is due; it
+is a batching of reminders, not a daily status report.
+
 Consequences worth knowing:
 
 - Running the job any number of times is harmless (this is what makes hourly runs safe).
@@ -129,7 +145,7 @@ and Firefox block; see [deployment.md](deployment.md#sessions-and-cookies).
 | Sessions | Refresh tokens are stored hashed, grouped per login. Reuse of a rotated token revokes the whole login; logout and password reset revoke sessions; cookie-using endpoints check `Origin` (CSRF) |
 | Password reset | Random token, only its SHA-256 stored, 1 hour expiry, single use, spends all siblings; the request endpoint answers identically for unknown emails |
 | Data isolation | Every query filters by the current user; other people's rows return `404`, not `403` |
-| Abuse | Redis rate limits per IP and per email (hashed in keys); fails open if Redis is down |
+| Abuse | Redis rate limits per IP and per email (hashed in keys); fails open if Redis is down. The IP comes from `X-Forwarded-For` counted from the right by the number of trusted proxies (`TRUSTED_PROXY_HOPS`), so a forged header cannot pick a fresh bucket |
 | Errors | Uniform JSON with a request id; internals and stack traces never reach clients |
 | Secrets | Production refuses to start with a weak `SECRET_KEY`; a missing `RESEND_API_KEY` is a hard error there |
 | Input | Pydantic validation at the edge plus database CHECK/UNIQUE constraints as the last line of defence |
@@ -156,7 +172,7 @@ database) are for orchestrators and uptime monitors.
 | Status is derived, never stored | A stored status goes stale at midnight and needs a job to maintain; computing it is one subtraction |
 | Soft delete for documents only | Documents carry history; vehicles are simple records and are hard-deleted |
 | Hourly job + local 08:00 gate, not one daily run | Users in different timezones all get a morning email, and a transient failure is retried within the day |
-| Per-document emails (no digest) | Simplest correct v1; a daily digest is a v2 option |
+| Per-document emails by default, digest opt-in | Per-document was the simplest correct v1 and keeps existing users' behaviour; the digest is a per-user setting that batches the same reminders |
 | Resend over SMTP | HTTP API, idempotency keys, simple domain verification |
 
 ## Not built yet (v2 candidates)

@@ -102,7 +102,8 @@ interface RequestOptions {
 // One HTTP call. `credentials: "include"` makes the browser send and store the
 // HttpOnly refresh cookie (needed by login, refresh and logout).
 async function request<T>(path: string, options: RequestOptions): Promise<T> {
-  const url = new URL(API_URL + path);
+  // API_URL may be absolute (https://api.example.com) or a same-origin prefix (/api).
+  const url = new URL(API_URL + path, window.location.origin);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value) url.searchParams.set(key, value);
   }

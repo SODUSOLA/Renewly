@@ -2,6 +2,7 @@
 import json
 import logging
 import uuid
+from types import SimpleNamespace
 
 import pytest
 from fastapi.testclient import TestClient
@@ -290,3 +291,113 @@ def test_cors_origin_list_parsing():
     s = Settings(_env_file=None, database_url="x", secret_key="k",
                  cors_origins=" https://a.example/ , ,https://b.example ")
     assert s.cors_origin_list == ["https://a.example", "https://b.example"]
+
+
+# ------------------------------------------------- client IP / proxy spoofing
+# func to run a request through client_ip with chosen proxy settings
+def ip_for(monkeypatch, hops: int, forwarded: str | None, peer: str = "10.0.0.7") -> str:
+    """Return what client_ip() decides for a request with the given header and settings."""
+    from starlette.requests import Request
+
+    from app.core import client_ip as module
+
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(trusted_proxy_hops=hops))
+    headers = [(b"x-forwarded-for", forwarded.encode())] if forwarded is not None else []
+    scope = {"type": "http", "headers": headers, "client": (peer, 5000), "method": "GET", "path": "/"}
+    return module.client_ip(Request(scope))
+
+
+def test_without_trusted_proxies_the_header_is_ignored(monkeypatch):
+    assert ip_for(monkeypatch, 0, "1.2.3.4") == "10.0.0.7"
+
+
+def test_one_proxy_means_the_rightmost_entry_is_the_client(monkeypatch):
+    # The client invented the first two values; our proxy appended the real one.
+    assert ip_for(monkeypatch, 1, "6.6.6.6, 7.7.7.7, 203.0.113.9") == "203.0.113.9"
+    assert ip_for(monkeypatch, 1, "203.0.113.9") == "203.0.113.9"
+
+
+def test_two_proxies_means_the_second_from_the_right(monkeypatch):
+    assert ip_for(monkeypatch, 2, "6.6.6.6, 203.0.113.9, 198.51.100.4") == "203.0.113.9"
+
+
+def test_missing_short_or_invalid_headers_fall_back_to_the_connecting_address(monkeypatch):
+    assert ip_for(monkeypatch, 1, None) == "10.0.0.7"
+    assert ip_for(monkeypatch, 2, "203.0.113.9") == "10.0.0.7"  # fewer entries than proxies
+    assert ip_for(monkeypatch, 1, "<script>") == "10.0.0.7"  # not an IP
+
+
+def test_ipv6_clients_are_supported_and_normalised(monkeypatch):
+    assert ip_for(monkeypatch, 1, "2001:0DB8:0:0:0:0:0:1") == "2001:db8::1"
+
+
+# func to register users until the per-IP limit trips, forging a different leading header each time
+def register_with_forged_headers(client, monkeypatch, hops: int, real_ip: str, count: int = 12) -> list[int]:
+    """POST /auth/register `count` times claiming a new fake IP each time; return status codes."""
+    from app.core import client_ip as module
+
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(trusted_proxy_hops=hops))
+    codes = []
+    for i in range(count):
+        res = client.post(
+            "/auth/register",
+            json={"email": f"u{i}@example.com", "password": "correct-horse", "full_name": "U"},
+            headers={"X-Forwarded-For": f"9.9.9.{i}, {real_ip}"},
+        )
+        codes.append(res.status_code)
+    return codes
+
+
+def test_forging_forwarded_for_cannot_dodge_the_ip_rate_limit_behind_a_proxy(client, monkeypatch):
+    codes = register_with_forged_headers(client, monkeypatch, hops=1, real_ip="203.0.113.9")
+    assert codes[:10] == [201] * 10 and codes[10:] == [429, 429]
+
+
+def test_forging_forwarded_for_cannot_dodge_the_ip_rate_limit_without_a_proxy(client, monkeypatch):
+    codes = register_with_forged_headers(client, monkeypatch, hops=0, real_ip="203.0.113.9")
+    assert codes[:10] == [201] * 10 and codes[10:] == [429, 429]
+
+
+def test_real_users_behind_the_proxy_get_separate_limits(client, monkeypatch):
+    from app.core import client_ip as module
+
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(trusted_proxy_hops=1))
+
+    def attempt(ip: str, n: int) -> int:
+        return client.post(
+            "/auth/register",
+            json={"email": f"{ip.replace('.', '-')}-{n}@example.com", "password": "correct-horse", "full_name": "U"},
+            headers={"X-Forwarded-For": ip},
+        ).status_code
+
+    assert [attempt("203.0.113.1", n) for n in range(11)][-1] == 429  # the noisy client is limited
+    assert attempt("203.0.113.2", 0) == 201  # a different real client is unaffected
+
+
+def test_request_log_records_the_client_ip(client, monkeypatch, caplog):
+    from app.core import client_ip as module
+
+    monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(trusted_proxy_hops=1))
+    with caplog.at_level(logging.INFO, logger="app.request"):
+        client.get("/dashboard", headers={"X-Forwarded-For": "6.6.6.6, 203.0.113.9"})
+    record = next(r for r in caplog.records if r.name == "app.request")
+    assert record.client_ip == "203.0.113.9"
+
+
+def test_startup_warns_when_production_has_no_proxy_configured(caplog):
+    from app.core.client_ip import log_proxy_configuration
+
+    with caplog.at_level(logging.INFO, logger="app.core.client_ip"):
+        log_proxy_configuration(Settings(_env_file=None, database_url="x", secret_key="k" * 40, app_env="production"))
+        warned = [r for r in caplog.records if r.levelno == logging.WARNING]
+        assert warned and "TRUSTED_PROXY_HOPS" in warned[0].getMessage()
+        caplog.clear()
+        log_proxy_configuration(Settings(_env_file=None, database_url="x", secret_key="k" * 40, app_env="production", trusted_proxy_hops=1))
+        log_proxy_configuration(Settings(_env_file=None, database_url="x", secret_key="k" * 40, app_env="development"))
+    assert [r.levelno for r in caplog.records] == [logging.INFO]
+
+
+def test_proxy_hops_setting_is_bounded():
+    for bad in (-1, 6):
+        with pytest.raises(ValidationError):
+            Settings(_env_file=None, database_url="x", secret_key="k", trusted_proxy_hops=bad)

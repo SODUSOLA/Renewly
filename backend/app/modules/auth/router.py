@@ -20,6 +20,7 @@ from app.modules.auth.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    ProfileUpdate,
     RegisterRequest,
     ResetPasswordRequest,
     TokenResponse,
@@ -145,6 +146,17 @@ def logout(request: Request, db: Session = Depends(get_db)) -> Response:
 def read_me(current_user: User = Depends(get_current_user)) -> User:
     """Return the profile of the authenticated user."""
     return current_user
+
+
+# func to change the signed-in user's own settings
+@router.patch("/me", response_model=UserRead)
+def update_me(
+    body: ProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Change name, timezone or reminder style (`each` or `digest`). Only fields sent change."""
+    return service.update_profile(db, current_user, body)
 
 
 # func: email a reset link if the account exists

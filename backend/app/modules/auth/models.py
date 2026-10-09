@@ -1,8 +1,9 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, func, true
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Uuid, func, true
 from sqlalchemy.orm import Mapped, mapped_column, relationship
+from app.common.enums import ReminderStyle, enum_values
 from app.core.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
 
 if TYPE_CHECKING:
@@ -28,6 +29,12 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true()
+    )
+    # One email per reminder ("each") or one combined email a day ("digest").
+    reminder_style: Mapped[ReminderStyle] = mapped_column(
+        Enum(ReminderStyle, native_enum=False, length=10, values_callable=enum_values),
+        default=ReminderStyle.EACH,
+        server_default=ReminderStyle.EACH.value,
     )
 
     vehicles: Mapped[list["Vehicle"]] = relationship(

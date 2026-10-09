@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import FastAPI, Request
 
+from app.core.client_ip import client_ip
 from app.core.errors import error_response
 from app.core.logging import request_id_var
 
@@ -48,6 +49,7 @@ def register_middleware(app: FastAPI) -> None:
                     "path": request.url.path,
                     "status": response.status_code,
                     "duration_ms": round((time.perf_counter() - started) * 1000, 1),
+                    "client_ip": client_ip(request),
                 },
             )
             return response

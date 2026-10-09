@@ -42,7 +42,7 @@ export function renderApp(ui: ReactElement, route = "/") {
   );
 }
 
-export const USER = { id: "u1", email: "ada@example.com", full_name: "Ada Obi", timezone: "Africa/Lagos", created_at: "2026-10-01T00:00:00Z" };
+export const USER = { id: "u1", email: "ada@example.com", full_name: "Ada Obi", timezone: "Africa/Lagos", reminder_style: "each", created_at: "2026-10-01T00:00:00Z" };
 
 export function makeDoc(overrides: Record<string, unknown> = {}) {
   return {

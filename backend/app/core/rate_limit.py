@@ -16,6 +16,7 @@ from typing import Protocol
 import redis
 from fastapi import HTTPException, Request, status
 
+from app.core.client_ip import client_ip
 from app.core.config import get_settings
 
 logger = logging.getLogger(__name__)
@@ -121,10 +122,10 @@ class RateLimiter:
     def __call__(self, request: Request) -> None:
         """FastAPI dependency: limit by the caller's IP address.
 
-        Behind a reverse proxy run uvicorn with --proxy-headers so
-        `request.client` is the real client, not the proxy.
+        The address comes from `client_ip`, which only trusts the proxies configured in
+        TRUSTED_PROXY_HOPS, so a forged X-Forwarded-For cannot dodge the limit.
         """
-        self.check(request.client.host if request.client else "unknown")
+        self.check(client_ip(request))
 
     # func to count a hit for any identifier
     def check(self, identifier: str) -> None:

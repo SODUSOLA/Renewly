@@ -3,7 +3,9 @@ import uuid
 from datetime import datetime
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
+from app.common.enums import ReminderStyle
 
 PASSWORD_MIN_LENGTH = 8
 PASSWORD_MAX_LENGTH = 128
@@ -61,6 +63,7 @@ class UserRead(BaseModel):
     email: EmailStr
     full_name: str
     timezone: str
+    reminder_style: ReminderStyle
     created_at: datetime
 
 
@@ -86,3 +89,34 @@ class MessageResponse(BaseModel):
     """A plain human-readable confirmation message."""
 
     message: str
+
+
+# class for the body of PATCH /auth/me
+class ProfileUpdate(BaseModel):
+    """Body of PATCH /auth/me: only the fields sent are changed. Email cannot be changed here."""
+
+    full_name: str | None = Field(default=None, min_length=1, max_length=150)
+    timezone: str | None = Field(default=None, max_length=64)
+    reminder_style: ReminderStyle | None = None
+
+    # func to reject names that are not real IANA timezones
+    @field_validator("timezone")
+    @classmethod
+    def timezone_must_be_valid(cls, value: str | None) -> str | None:
+        """Same check as at sign-up: an IANA name like 'Africa/Lagos'."""
+        if value is None:
+            return value
+        try:
+            ZoneInfo(value)
+        except (ZoneInfoNotFoundError, ValueError):
+            raise ValueError("Unknown timezone. Use an IANA name like 'Africa/Lagos'.")
+        return value
+
+    # func to block explicit nulls (omit a field to leave it unchanged)
+    @model_validator(mode="after")
+    def no_explicit_nulls(self) -> "ProfileUpdate":
+        """Reject `{"timezone": null}` and friends: omit the field instead."""
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self

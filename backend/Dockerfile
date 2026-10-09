@@ -27,6 +27,8 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
   CMD python -c "import os,urllib.request; urllib.request.urlopen('http://127.0.0.1:%s/health' % os.environ.get('PORT','8000'), timeout=4)"
 
-# Default process: the API. --proxy-headers makes the rate limiter see real client
-# IPs when running behind the host's load balancer.
-CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]
+# Default process: the API. uvicorn's own proxy-header handling is switched off on
+# purpose: with a wildcard allow-list it believes whatever X-Forwarded-For says, which
+# lets callers fake their IP. The app reads the header itself and only trusts the number
+# of proxies set in TRUSTED_PROXY_HOPS (see app/core/client_ip.py).
+CMD ["sh", "-c", "exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --no-proxy-headers"]

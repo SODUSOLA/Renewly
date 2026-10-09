@@ -19,6 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.auth.models import PasswordResetToken, RefreshToken, User
+from app.modules.auth.schemas import ProfileUpdate
 
 RESET_TOKEN_TTL = timedelta(hours=1)
 # Two tabs can refresh at the same instant with the same cookie. A token rotated this
@@ -286,3 +287,15 @@ def purge_expired_refresh_tokens(db: Session) -> int:
     )
     db.commit()
     return result.rowcount
+
+
+# ------------------------------------------------------------------- profile
+
+
+# func to change the user's own settings
+def update_profile(db: Session, user: User, data: ProfileUpdate) -> User:
+    """Apply the fields the client sent (name, timezone, reminder style) and return the user."""
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(user, field, value.strip() if isinstance(value, str) else value)
+    db.commit()
+    return user

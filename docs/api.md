@@ -46,6 +46,7 @@ problem. You may send your own `X-Request-ID` to trace a call across systems.
 | 500 | `internal_error` | Our fault; no details are exposed, use `request_id` |
 
 **Rate limits.** Over the limit you get `429` with a `Retry-After` header (seconds).
+Per-IP limits use the client's real address as seen by the server's own proxies; a client-supplied `X-Forwarded-For` cannot change which bucket a request falls in.
 
 | Endpoint | Limit |
 |---|---|
@@ -71,7 +72,7 @@ Timestamps (`created_at`...) are UTC.
 Emails are case-insensitive. Returns the user (never the password):
 ```json
 { "id": "…", "email": "ada@example.com", "full_name": "Ada Obi",
-  "timezone": "Africa/Lagos", "created_at": "2026-10-08T09:00:00Z" }
+  "timezone": "Africa/Lagos", "reminder_style": "each", "created_at": "2026-10-08T09:00:00Z" }
 ```
 Errors: `409` email already registered, `422` bad timezone or short password.
 
@@ -88,6 +89,20 @@ it never says which part was wrong.
 
 ### `GET /auth/me` → 200
 Returns the logged-in user (same shape as register).
+
+### `PATCH /auth/me` → 200
+Change your own settings. Send only the fields you want to change; `null` is rejected
+(omit the field instead). The email address cannot be changed here.
+```json
+{ "reminder_style": "digest", "timezone": "Europe/London", "full_name": "Ada Obi" }
+```
+| Field | Values |
+|---|---|
+| `reminder_style` | `each` (default): one email per document reminder. `digest`: one email a day listing everything due |
+| `timezone` | An IANA name; it decides when "8am" and "today" are for you, from the next reminder run |
+| `full_name` | 1-150 characters |
+
+Returns the updated user. `422` for an unknown timezone or style.
 
 ### `POST /auth/refresh` → 200
 No body. The browser sends the refresh cookie automatically (use `credentials: "include"`).
@@ -250,7 +265,10 @@ are excluded.
 
 ## Reminder emails
 
-Not an endpoint, but part of the contract: a reminder email is sent when a
-document's days left (in the owner's timezone) equals one of its offsets, from
-08:00 local time onward. One email per document per offset per expiry date.
+Not an endpoint, but part of the contract: a reminder is due when a document's days left
+(in the owner's timezone) equals one of its offsets, from 08:00 local time onward. Each
+reminder is delivered once per document, offset and expiry date. With `reminder_style:
+"each"` every reminder is its own email; with `"digest"` all of that user's reminders due
+on the same day arrive in **one** email, most urgent first (a day with one due document
+reads like an ordinary reminder, and a day with none sends nothing).
 Deleted documents and deactivated users never get reminders.
