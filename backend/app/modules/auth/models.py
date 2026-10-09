@@ -30,6 +30,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true()
     )
+    # Whether to send the six-monthly spending report (opt-out; reminders are separate).
+    report_emails: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default=true()
+    )
     # One email per reminder ("each") or one combined email a day ("digest").
     reminder_style: Mapped[ReminderStyle] = mapped_column(
         Enum(ReminderStyle, native_enum=False, length=10, values_callable=enum_values),

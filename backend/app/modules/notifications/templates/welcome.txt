@@ -1,0 +1,17 @@
+Hi {{ full_name }},
+
+Welcome to {{ app_name }}.
+
+Add the documents that expire (your driver's licence, car insurance, registration, permits) and we'll email you before they do, so nothing lapses by surprise.
+
+  1. Add a document with its expiry date.
+  2. Pick your reminder days on the calendar.
+  3. Renew it, then mark it as renewed and we start watching the new date.
+
+Reminders arrive at {{ send_hour }}am in your timezone ({{ timezone }}).
+{% if app_url %}
+
+Add your first document: {{ app_url }}/documents?new=1
+{% endif %}
+
+{% include "_footer.txt" %}

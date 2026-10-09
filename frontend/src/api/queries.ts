@@ -2,7 +2,7 @@
 // affect so every screen shows fresh data.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { Dashboard, Doc, DocInput, DocumentStatus, DocumentType, RenewInput, Renewal, Vehicle, VehicleInput } from "./types";
+import type { CostReport, Dashboard, Doc, DocInput, DocumentStatus, DocumentType, RenewInput, Renewal, RenewalChanges, Vehicle, VehicleInput } from "./types";
 
 export const keys = {
   dashboard: ["dashboard"] as const,
@@ -10,6 +10,7 @@ export const keys = {
   document: (id: string) => ["documents", id] as const,
   renewals: (id: string) => ["documents", id, "renewals"] as const,
   vehicles: ["vehicles"] as const,
+  reports: ["reports"] as const,
 };
 
 export function useDashboard() {
@@ -41,12 +42,13 @@ export function useVehicles() {
   return useQuery({ queryKey: keys.vehicles, queryFn: () => api<Vehicle[]>("/vehicles") });
 }
 
-// Anything that changes documents also changes the dashboard (and vice versa).
+// Anything that changes documents also changes the dashboard and the spending reports.
 function useRefreshDocuments() {
   const client = useQueryClient();
   return () => Promise.all([
     client.invalidateQueries({ queryKey: keys.documents }),
     client.invalidateQueries({ queryKey: keys.dashboard }),
+    client.invalidateQueries({ queryKey: keys.reports }),
   ]);
 }
 
@@ -108,5 +110,27 @@ export function useDeleteVehicle() {
       client.invalidateQueries({ queryKey: keys.documents }),
       client.invalidateQueries({ queryKey: keys.dashboard }),
     ]),
+  });
+}
+
+// Spending for one calendar year (the server picks the current year when none is given).
+export function useCostReport(year?: number) {
+  return useQuery({
+    queryKey: [...keys.reports, "costs", year ?? "current"],
+    queryFn: () => api<CostReport>("/reports/costs", { query: { year: year ? String(year) : undefined } }),
+  });
+}
+
+// Add, fix or clear the cost/notes of a past renewal.
+export function useUpdateRenewal(documentId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: ({ renewalId, changes }: { renewalId: string; changes: RenewalChanges }) =>
+      api<Renewal>(`/documents/${documentId}/renewals/${renewalId}`, { method: "PATCH", body: changes }),
+    onSuccess: () =>
+      Promise.all([
+        client.invalidateQueries({ queryKey: keys.renewals(documentId) }),
+        client.invalidateQueries({ queryKey: keys.reports }),
+      ]),
   });
 }

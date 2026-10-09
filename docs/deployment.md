@@ -208,6 +208,10 @@ same place.
 slash): it controls both which pages may call the API and which `Origin` values
 `/auth/refresh` and `/auth/logout` accept.
 
+**Scheduled jobs.** The `beat` service runs: reminders (hourly, minute 5), the six-monthly spending report
+(hourly, minute 20; does nothing outside the first week of January and July), and a daily purge of expired
+refresh tokens. All run on the `worker`. Check the worker log for lines such as `Six-monthly report run finished`.
+
 **Logs.** JSON, one object per line, each with a `request_id` that is also returned
 to the client in the `X-Request-ID` header and in error bodies. Search by it to follow
 one request.

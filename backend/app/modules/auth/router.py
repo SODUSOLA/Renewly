@@ -26,7 +26,11 @@ from app.modules.auth.schemas import (
     TokenResponse,
     UserRead,
 )
-from app.modules.notifications.email import send_password_reset_email
+from app.modules.notifications.service import (
+    send_password_changed_email,
+    send_password_reset_email,
+    send_welcome_email,
+)
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -48,10 +52,12 @@ refresh_ip_limit = RateLimiter("refresh-ip", limit=60, window_seconds=60)
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(register_limit)],
 )
-def register(body: RegisterRequest, db: Session = Depends(get_db)) -> User:
-    """Create an account. Returns 409 if the email is already registered."""
+def register(
+    body: RegisterRequest, background_tasks: BackgroundTasks, db: Session = Depends(get_db)
+) -> User:
+    """Create an account and email a welcome message. Returns 409 if the email is already registered."""
     try:
-        return service.register_user(
+        user = service.register_user(
             db,
             email=body.email,
             password=body.password,
@@ -60,6 +66,8 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> User:
         )
     except service.EmailAlreadyRegistered:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
+    background_tasks.add_task(send_welcome_email, user.email, user.full_name, user.timezone)
+    return user
 
 
 # func to exchange email and password for an access token and a refresh cookie
@@ -193,13 +201,19 @@ def forgot_password(
     dependencies=[Depends(reset_ip_limit)],
 )
 def reset_password(
-    body: ResetPasswordRequest, db: Session = Depends(get_db)
+    body: ResetPasswordRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
 ) -> MessageResponse:
-    """Set a new password using the emailed token. Returns 400 if the token is bad."""
+    """Set a new password using the emailed token, then email a security notice.
+
+    Returns 400 if the token is bad.
+    """
     try:
-        service.reset_password(
+        user = service.reset_password(
             db, raw_token=body.token, new_password=body.new_password
         )
     except service.InvalidResetToken:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid or expired token")
+    background_tasks.add_task(send_password_changed_email, user.email, user.full_name)
     return MessageResponse(message="Password updated.")

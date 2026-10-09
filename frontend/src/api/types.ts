@@ -17,6 +17,7 @@ export interface User {
   full_name: string;
   timezone: string;
   reminder_style: ReminderStyle;
+  report_emails: boolean;
   created_at: string;
 }
 
@@ -89,4 +90,45 @@ export interface Dashboard {
   expired: Doc[];
   expiring_soon: Doc[];
   valid: Doc[];
+}
+
+export interface RenewalChanges {
+  // null clears the value; leaving a key out leaves it unchanged.
+  cost?: string | null;
+  notes?: string | null;
+}
+
+export interface MonthCost {
+  month: number;
+  total: string;
+  renewals: number;
+}
+
+export interface CostBucket {
+  label: string;
+  total: string;
+  renewals: number;
+}
+
+export interface VehicleCost extends CostBucket {
+  vehicle_id: string | null;
+}
+
+export interface MissingCost {
+  renewal_id: string;
+  document_id: string;
+  title: string;
+  renewed_on: string;
+}
+
+export interface CostReport {
+  year: number;
+  currency: string;
+  available_years: number[];
+  totals: { total: string; previous_year_total: string; renewals: number; renewals_with_cost: number };
+  by_month: MonthCost[];
+  by_type: CostBucket[];
+  by_vehicle: VehicleCost[];
+  missing_cost: MissingCost[];
+  missing_cost_count: number;
 }

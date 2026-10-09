@@ -1,12 +1,12 @@
-"""Email delivery through Resend, behind a small interface.
+"""Email delivery through Resend, behind a small interface (transport only).
+
+What the emails say lives in `templates/` and `service.py`; this file only sends them.
 
 Other code only calls `send_email(EmailMessage(...))`. Which sender is used is
 decided by settings, so swapping providers later means adding one class here.
 """
 import logging
 from dataclasses import dataclass
-from html import escape
-from urllib.parse import urlencode
 from typing import Protocol
 
 import httpx
@@ -119,46 +119,3 @@ def get_sender() -> EmailSender:
 def send_email(message: EmailMessage) -> None:
     """Send `message` with the configured sender. Raises EmailSendError on failure."""
     get_sender().send(message)
-
-
-# func to build the password-reset email
-def build_password_reset_email(to_email: str, raw_token: str) -> EmailMessage:
-    """Compose the reset email: a link to the web app when FRONTEND_URL is set, else the token."""
-    frontend = get_settings().frontend_url.rstrip("/")
-    if frontend:
-        link = f"{frontend}/reset-password?{urlencode({'token': raw_token})}"
-        text = (
-            "We received a request to reset your Renewly password.\n\n"
-            f"Choose a new password here (valid for 1 hour):\n{link}\n\n"
-            "If you did not ask for this, you can ignore this email."
-        )
-        html = (
-            "<p>We received a request to reset your Renewly password.</p>"
-            f'<p><a href="{escape(link)}">Choose a new password</a> (the link is valid for 1 hour).</p>'
-            "<p>If you did not ask for this, you can ignore this email.</p>"
-        )
-    else:
-        text = (
-            "We received a request to reset your Renewly password.\n\n"
-            f"Your reset token (valid for 1 hour): {raw_token}\n\n"
-            "If you did not ask for this, you can ignore this email."
-        )
-        html = (
-            "<p>We received a request to reset your Renewly password.</p>"
-            f"<p>Your reset token (valid for 1 hour):<br><code>{escape(raw_token)}</code></p>"
-            "<p>If you did not ask for this, you can ignore this email.</p>"
-        )
-    return EmailMessage(to_email, "Reset your Renewly password", html, text)
-
-
-# func to email a password-reset token
-def send_password_reset_email(to_email: str, raw_token: str) -> None:
-    """Email the password-reset link/token. Failures are logged, never raised.
-
-    This runs after the HTTP response is sent (background task), so there is
-    nobody left to report an error to; the endpoint answers the same either way.
-    """
-    try:
-        send_email(build_password_reset_email(to_email, raw_token))
-    except EmailSendError:
-        logger.exception("Could not send password reset email to %s", to_email)

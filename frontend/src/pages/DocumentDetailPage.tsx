@@ -1,8 +1,8 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { ApiError, fieldErrors } from "../api/client";
-import type { Doc } from "../api/types";
-import { useDeleteDocument, useDocument, useRenewals, useRenewDocument, useUpdateDocument, useVehicles } from "../api/queries";
+import type { Doc, Renewal } from "../api/types";
+import { useDeleteDocument, useDocument, useRenewals, useRenewDocument, useUpdateDocument, useUpdateRenewal, useVehicles } from "../api/queries";
 import { ConfirmDialog } from "../components/ConfirmDialog";
 import { DocumentForm } from "../components/DocumentForm";
 import { ErrorNotice } from "../components/ErrorNotice";
@@ -26,6 +26,8 @@ export function DocumentDetailPage() {
   const renew = useRenewDocument(id);
   const remove = useDeleteDocument();
   const [dialog, setDialog] = useState<Dialog>(null);
+  // The past renewal whose cost/notes are being edited, if any.
+  const [editingRenewal, setEditingRenewal] = useState<Renewal | null>(null);
 
   function close() {
     setDialog(null);
@@ -103,14 +105,19 @@ export function DocumentDetailPage() {
         ) : (
           <ul className="history">
             {renewals.data.map((r) => (
-              <li key={r.id}>
-                <strong>{formatDate(r.previous_expiry)}</strong> → <strong>{formatDate(r.new_expiry)}</strong>
-                <span className="muted small">
-                  {" "}
-                  renewed {formatDate(r.renewed_on)}
-                  {r.cost ? ` · ${formatNaira(r.cost)}` : ""}
-                </span>
-                {r.notes && <div className="muted small">{r.notes}</div>}
+              <li key={r.id} className="history-item">
+                <div>
+                  <strong>{formatDate(r.previous_expiry)}</strong> → <strong>{formatDate(r.new_expiry)}</strong>
+                  <span className="muted small">
+                    {" "}
+                    renewed {formatDate(r.renewed_on)}
+                    {r.cost !== null ? ` · ${formatNaira(r.cost)}` : ""}
+                  </span>
+                  {r.notes && <div className="muted small">{r.notes}</div>}
+                </div>
+                <button type="button" className="btn btn-ghost btn-sm" onClick={() => setEditingRenewal(r)}>
+                  {r.cost === null ? "Add cost" : "Edit"}
+                </button>
               </li>
             ))}
           </ul>
@@ -140,6 +147,9 @@ export function DocumentDetailPage() {
             onSubmit={(input) => renew.mutate(input, { onSuccess: close })}
           />
         </Modal>
+      )}
+      {editingRenewal && (
+        <EditRenewal documentId={doc.id} renewal={editingRenewal} onClose={() => setEditingRenewal(null)} />
       )}
       {dialog === "delete" && (
         <ConfirmDialog
@@ -229,5 +239,49 @@ function RenewForm({
         </button>
       </div>
     </form>
+  );
+}
+
+
+// Dialog for fixing what a past renewal cost (or adding it if it was skipped).
+function EditRenewal({ documentId, renewal, onClose }: { documentId: string; renewal: Renewal; onClose: () => void }) {
+  const update = useUpdateRenewal(documentId);
+  const [cost, setCost] = useState(renewal.cost ?? "");
+  const [notes, setNotes] = useState(renewal.notes ?? "");
+  const [clientError, setClientError] = useState<string>();
+
+  const server = fieldErrors(update.error);
+  const banner = Object.keys(server).length > 0 ? null : update.error;
+
+  function submit(event: FormEvent) {
+    event.preventDefault();
+    if (cost.trim() && !/^\d+(\.\d{1,2})?$/.test(cost.trim())) {
+      return setClientError("Enter the cost as a number, like 15000 or 15000.50.");
+    }
+    setClientError(undefined);
+    // An empty box clears the value (null); the server only changes what is sent.
+    update.mutate({ renewalId: renewal.id, changes: { cost: cost.trim() || null, notes: notes.trim() || null } }, { onSuccess: onClose });
+  }
+
+  return (
+    <Modal title={`Renewal of ${formatDate(renewal.renewed_on)}`} onClose={onClose}>
+      <form onSubmit={submit} noValidate>
+        <ErrorNotice error={banner} />
+        <Field label="Cost in ₦" error={clientError ?? server.cost} hint="Leave empty if you don't want to record it.">
+          <input value={cost} onChange={(e) => setCost(e.target.value)} inputMode="decimal" placeholder="15000" />
+        </Field>
+        <Field label="Notes (optional)" error={server.notes}>
+          <input value={notes} onChange={(e) => setNotes(e.target.value)} />
+        </Field>
+        <div className="actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Cancel
+          </button>
+          <button type="submit" className="btn btn-primary" disabled={update.isPending}>
+            {update.isPending ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </form>
+    </Modal>
   );
 }

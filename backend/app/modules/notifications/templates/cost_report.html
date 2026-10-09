@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% from "_macros.html" import button %}
+{% block content %}
+<p style="margin: 0 0 12px;">Hi {{ full_name }},</p>
+<p style="margin: 0 0 16px; font-size: 20px; font-weight: 700; line-height: 1.3;">Your renewals report for {{ period_label }}</p>
+
+{% if renewals > 0 %}
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background: #ecfdf3; border-radius: 10px; margin: 0 0 6px;">
+  <tr>
+    <td style="padding: 16px 18px;">
+      <div style="font-size: 14px; color: #52606d;">Spent on renewals</div>
+      <div style="font-size: 30px; font-weight: 700; line-height: 1.2; color: #067647;">{{ total | naira }}</div>
+      <div style="font-size: 14px; color: #52606d; margin-top: 2px;">
+        {{ renewals }} {{ "renewal" if renewals == 1 else "renewals" }}
+        {% if change_pct is not none %}
+        · {% if change_pct > 0 %}↑ {{ change_pct }}% more than{% elif change_pct < 0 %}↓ {{ -change_pct }}% less than{% else %}no change from{% endif %} the six months before ({{ previous_total | naira }})
+        {% endif %}
+      </div>
+    </td>
+  </tr>
+</table>
+{% if missing_cost_count > 0 %}
+<p style="margin: 10px 0 0; font-size: 14px; color: #b54708;">{{ missing_cost_count }} {{ "renewal has" if missing_cost_count == 1 else "renewals have" }} no cost recorded, so the total is understated. You can add {{ "it" if missing_cost_count == 1 else "them" }} from each document's renewal history.</p>
+{% endif %}
+
+{% if by_type %}
+<p style="margin: 22px 0 6px; font-weight: 700;">Where it went</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+  {% for row in by_type %}
+  <tr>
+    <td style="padding: 7px 0; border-bottom: 1px solid #e4e7eb;">{{ row.label }} <span style="color: #7b8794; font-size: 13px;">({{ row.renewals }})</span></td>
+    <td align="right" style="padding: 7px 0; border-bottom: 1px solid #e4e7eb; font-weight: 600;">{{ row.total | naira }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% if by_vehicle | length > 1 or (by_vehicle | length == 1 and by_vehicle[0].label != "No vehicle") %}
+<p style="margin: 18px 0 6px; font-weight: 700;">By vehicle</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+  {% for row in by_vehicle %}
+  <tr>
+    <td style="padding: 7px 0; border-bottom: 1px solid #e4e7eb;">{{ row.label }} <span style="color: #7b8794; font-size: 13px;">({{ row.renewals }})</span></td>
+    <td align="right" style="padding: 7px 0; border-bottom: 1px solid #e4e7eb; font-weight: 600;">{{ row.total | naira }}</td>
+  </tr>
+  {% endfor %}
+</table>
+{% endif %}
+{% else %}
+<p style="margin: 0 0 6px;">You didn't mark any renewals in this period.</p>
+{% endif %}
+
+{% if upcoming %}
+<p style="margin: 24px 0 6px; font-weight: 700;">Coming up in the next six months</p>
+<table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="border-collapse: collapse;">
+  {% for item in upcoming %}
+  <tr>
+    <td style="padding: 8px 0; border-bottom: 1px solid #e4e7eb;">
+      <strong>{{ item.title }}</strong><br>
+      <span style="color: #52606d; font-size: 13px;">{{ item.kind }}{% if item.vehicle_label %} · {{ item.vehicle_label }}{% endif %}</span>
+    </td>
+    <td align="right" style="padding: 8px 0 8px 12px; border-bottom: 1px solid #e4e7eb; white-space: nowrap;">
+      <span style="color: {{ urgency_colour(item.days_left) }}; font-weight: 600;">{{ item.expiry_date | date_short }}</span><br>
+      <span style="color: #52606d; font-size: 13px;">{% if item.estimated_cost is not none %}about {{ item.estimated_cost | naira }}{% else %}no price on record{% endif %}</span>
+    </td>
+  </tr>
+  {% endfor %}
+</table>
+{% if estimate_total is not none %}
+<p style="margin: 10px 0 0; font-size: 14px; color: #52606d;">Roughly <strong>{{ estimate_total | naira }}</strong> if each costs what it did last time ({{ estimate_count }} of {{ upcoming | length }} have a past price). Treat this as a guide, not a quote.</p>
+{% endif %}
+{% endif %}
+
+{% if app_url %}
+{{ button(reports_url, "See the full report") }}
+{% endif %}
+{% endblock %}
+{% block footer %}You get this summary every six months, in January and July. {% if settings_url %}<a href="{{ settings_url }}" style="color: #7b8794;">Turn it off in your settings</a>.{% endif %}{% endblock %}

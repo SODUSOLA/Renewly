@@ -9,7 +9,8 @@ import pytest
 from app.common.enums import DocumentType
 from app.modules.notifications import email as email_module
 from app.modules.notifications.email import EmailMessage, EmailSendError, ResendSender
-from app.modules.notifications.rendering import render_expiry_reminder
+from app.modules.notifications import service as notifications
+from app.modules.notifications.service import render_expiry_reminder
 
 MESSAGE = EmailMessage("ada@example.com", "Hello", "<p>hi</p>", "hi", idempotency_key="k-1")
 
@@ -106,7 +107,7 @@ def test_reset_email_failure_is_swallowed(monkeypatch):
         raise EmailSendError("down")
 
     monkeypatch.setattr(email_module, "send_email", boom)
-    email_module.send_password_reset_email("ada@example.com", "tok")  # must not raise
+    notifications.send_password_reset_email("ada@example.com", "tok")  # must not raise
 
 
 def test_celery_task_runs_and_reports_counts():
@@ -124,15 +125,24 @@ def test_log_sender_logs_the_message_instead_of_sending(caplog):
 
 
 # ------------------------------------------------------- password-reset email
-def test_reset_email_links_to_the_frontend_when_configured(monkeypatch):
-    fake_settings(monkeypatch, frontend_url="https://app.example.com/")
-    message = email_module.build_password_reset_email("ada@example.com", "tok+/=&x")
+def test_reset_email_links_to_the_frontend_when_configured(frontend_url):
+    frontend_url("https://app.example.com/")
+    message = notifications.build_password_reset_email("ada@example.com", "tok+/=&x")
     assert "https://app.example.com/reset-password?token=tok%2B%2F%3D%26x" in message.text
     assert 'href="https://app.example.com/reset-password?token=tok%2B%2F%3D%26x"' in message.html
-    assert message.to == "ada@example.com" and "Renewly" in message.subject
+    assert message.to == "ada@example.com" and message.subject == "Reset your Renewly password"
 
 
-def test_reset_email_falls_back_to_the_bare_token_without_a_frontend_url(monkeypatch):
-    fake_settings(monkeypatch, frontend_url="")
-    message = email_module.build_password_reset_email("ada@example.com", "tok123")
+def test_reset_email_falls_back_to_the_bare_token_without_a_frontend_url(frontend_url):
+    frontend_url("")
+    message = notifications.build_password_reset_email("ada@example.com", "tok123")
     assert "tok123" in message.text and "http" not in message.text
+    assert "tok123" in message.html
+
+
+def test_the_test_suite_can_never_send_real_email():
+    """Guard: a developer's real RESEND_API_KEY in .env must not leak into tests."""
+    from app.core.config import get_settings
+
+    assert get_settings().resend_api_key == ""
+    assert isinstance(email_module.get_sender(), email_module.LogSender)

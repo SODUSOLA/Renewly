@@ -34,3 +34,13 @@ export function formatNaira(amount: string): string {
   if (!Number.isFinite(value)) return amount;
   return `₦${value.toLocaleString("en-NG", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
+
+// How much bigger or smaller `current` is than `previous`, as a whole percent
+// (amounts are the API's decimal strings). Null when there is nothing to compare with.
+export function percentChange(current: string, previous: string): number | null {
+  const before = Number(previous);
+  if (!(before > 0)) return null;
+  return Math.round(((Number(current) - before) / before) * 100);
+}
+
+export const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

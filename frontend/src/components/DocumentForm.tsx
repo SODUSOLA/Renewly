@@ -1,10 +1,12 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { fieldErrors } from "../api/client";
 import type { Doc, DocInput, DocumentType, Vehicle } from "../api/types";
-import { DEFAULT_OFFSETS, offsetsToText, parseOffsets } from "../lib/offsets";
+import { useAuth } from "../auth/AuthContext";
+import { DEFAULT_OFFSETS, addDays, earliestReminderDate, todayIn } from "../lib/calendar";
 import { TYPE_OPTIONS } from "../lib/status";
 import { ErrorNotice } from "./ErrorNotice";
 import { Field } from "./Field";
+import { ReminderCalendar } from "./ReminderCalendar";
 
 // Create/edit form for a document. It checks what it can on the client, and
 // shows any field errors the server sends back next to the right input.
@@ -32,9 +34,21 @@ export function DocumentForm({
   const [documentNumber, setDocumentNumber] = useState(initial?.document_number ?? "");
   const [issueDate, setIssueDate] = useState(initial?.issue_date ?? "");
   const [expiryDate, setExpiryDate] = useState(initial?.expiry_date ?? "");
-  const [offsetsText, setOffsetsText] = useState(offsetsToText(initial?.reminder_offsets ?? DEFAULT_OFFSETS));
+  // Reminders are kept as "days before expiry"; the calendar shows them as dates.
+  const [offsets, setOffsets] = useState<number[]>(initial?.reminder_offsets ?? DEFAULT_OFFSETS);
+  const { user } = useAuth();
+  const today = todayIn(user?.timezone);
+  // Until the user picks days themselves, a NEW document suggests the usual reminders,
+  // minus any that would already be in the past for this expiry date.
+  const [remindersTouched, setRemindersTouched] = useState(false);
   const [notes, setNotes] = useState(initial?.notes ?? "");
   const [clientErrors, setClientErrors] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (initial || remindersTouched || !expiryDate) return;
+    const earliest = earliestReminderDate({ issueDate: issueDate || null, expiryDate, today });
+    setOffsets(DEFAULT_OFFSETS.filter((days) => addDays(expiryDate, -days) >= earliest));
+  }, [initial, remindersTouched, expiryDate, issueDate, today]);
 
   const server = fieldErrors(serverError);
   const errors = { ...server, ...clientErrors };
@@ -48,10 +62,8 @@ export function DocumentForm({
     if (!expiryDate) found.expiry_date = "Choose the expiry date.";
     if (type === "custom" && !customLabel.trim()) found.custom_type_label = "Say what kind of document this is.";
     if (issueDate && expiryDate && expiryDate < issueDate) found.expiry_date = "Expiry can't be before the issue date.";
-    const offsets = parseOffsets(offsetsText);
-    if (!offsets.ok) found.reminder_offsets = offsets.error;
     setClientErrors(found);
-    if (Object.keys(found).length > 0 || !offsets.ok) return;
+    if (Object.keys(found).length > 0) return;
 
     onSubmit({
       type,
@@ -61,7 +73,7 @@ export function DocumentForm({
       document_number: documentNumber.trim() || null,
       issue_date: issueDate || null,
       expiry_date: expiryDate,
-      reminder_offsets: offsets.value,
+      reminder_offsets: offsets,
       notes: notes.trim() || null,
     });
   }
@@ -106,14 +118,16 @@ export function DocumentForm({
         <Field label="Expiry date" error={errors.expiry_date}>
           <input type="date" value={expiryDate} onChange={(e) => setExpiryDate(e.target.value)} required />
         </Field>
-        <Field
-          label="Remind me this many days before"
-          error={errors.reminder_offsets}
-          hint="Separate with commas. Leave empty to turn reminders off."
-        >
-          <input value={offsetsText} onChange={(e) => setOffsetsText(e.target.value)} inputMode="numeric" placeholder="90, 30, 14, 7, 1" />
-        </Field>
       </div>
+      <fieldset className="reminders">
+        <legend>Reminders</legend>
+        {expiryDate ? (
+          <ReminderCalendar issueDate={issueDate || null} expiryDate={expiryDate} today={today} offsets={offsets} onChange={(next) => { setRemindersTouched(true); setOffsets(next); }} />
+        ) : (
+          <p className="calendar-placeholder">Choose an expiry date above, then pick your reminder days on a calendar.</p>
+        )}
+        {errors.reminder_offsets && <p className="field-error">{errors.reminder_offsets}</p>}
+      </fieldset>
       <Field label="Notes (optional)" error={errors.notes}>
         <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} />
       </Field>

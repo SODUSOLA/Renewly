@@ -124,7 +124,7 @@ def create_password_reset(db: Session, *, email: str) -> tuple[User, str] | None
 
 
 # func to set a new password using an emailed token
-def reset_password(db: Session, *, raw_token: str, new_password: str) -> None:
+def reset_password(db: Session, *, raw_token: str, new_password: str) -> User:
     """Set a new password using an emailed token.
 
     Raises InvalidResetToken if the token is unknown, expired or used. On
@@ -152,6 +152,7 @@ def reset_password(db: Session, *, raw_token: str, new_password: str) -> None:
     # A password change signs the account out everywhere.
     revoke_all_sessions(db, user.id, now)
     db.commit()
+    return user
 
 
 # ---------------------------------------------------------------- refresh sessions

@@ -17,7 +17,11 @@ init_sentry()
 celery_app = Celery(
     "expiry_tracker",
     broker=get_settings().redis_url,
-    include=["app.modules.reminders.tasks", "app.modules.auth.tasks"],
+    include=[
+        "app.modules.reminders.tasks",
+        "app.modules.auth.tasks",
+        "app.modules.reports.tasks",
+    ],
 )
 
 celery_app.conf.update(
@@ -30,6 +34,12 @@ celery_app.conf.update(
         "send-due-reminders-hourly": {
             "task": "reminders.send_due_reminders",
             "schedule": crontab(minute=5),
+        },
+        # Six-monthly spending report: only does work in the first week of January and July;
+        # hourly so every timezone gets it at 08:00 and a missed hour is caught up.
+        "send-semiannual-reports-hourly": {
+            "task": "reports.send_semiannual_reports",
+            "schedule": crontab(minute=20),
         },
         # Housekeeping: drop refresh tokens that expired long ago.
         "purge-refresh-tokens-daily": {

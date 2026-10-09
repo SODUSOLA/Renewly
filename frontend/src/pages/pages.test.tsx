@@ -190,7 +190,15 @@ describe("DashboardPage", () => {
 });
 
 describe("DocumentForm", () => {
+  beforeEach(() => {
+    // The form decides what "today" is (for which reminder days are allowed); pin it.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-10-09T10:00:00Z"));
+  });
+  afterEach(() => vi.useRealTimers());
+
   function setup(onSubmit = vi.fn()) {
+    signedIn({});
     renderApp(<DocumentForm vehicles={[]} submitting={false} serverError={null} submitLabel="Add document" onSubmit={onSubmit} onCancel={() => undefined} />);
     return onSubmit;
   }
@@ -213,28 +221,61 @@ describe("DocumentForm", () => {
     expect(onSubmit).not.toHaveBeenCalled();
   });
 
-  it("rejects bad reminder offsets with a clear message", async () => {
+  it("shows the reminder calendar only once there is an expiry date", async () => {
     setup();
-    await userEvent.type(screen.getByLabelText("Name"), "Insurance");
-    await userEvent.type(screen.getByLabelText("Expiry date"), "2027-01-01");
-    const offsets = screen.getByLabelText("Remind me this many days before");
-    await userEvent.clear(offsets);
-    await userEvent.type(offsets, "7, soon");
-    await userEvent.click(screen.getByRole("button", { name: "Add document" }));
-    expect(screen.getByText(/"soon" is not a whole number/)).toBeInTheDocument();
+    expect(screen.getByText(/Choose an expiry date above, then pick your reminder days/)).toBeInTheDocument();
+    expect(screen.queryByRole("grid")).not.toBeInTheDocument();
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2027-03-01");
+    expect(await screen.findByRole("grid")).toBeInTheDocument();
+    expect(screen.getByText("4 of 4 reminders")).toBeInTheDocument();
   });
 
-  it("submits clean data: trimmed text, sorted offsets, nulls for blanks", async () => {
+  it("submits clean data: trimmed text, the default reminders, nulls for blanks", async () => {
     const onSubmit = setup();
     await userEvent.type(screen.getByLabelText("Name"), "  Car insurance ");
     await userEvent.type(screen.getByLabelText("Expiry date"), "2027-03-01");
-    const offsets = screen.getByLabelText("Remind me this many days before");
-    await userEvent.clear(offsets);
-    await userEvent.type(offsets, "7, 30");
     await userEvent.click(screen.getByRole("button", { name: "Add document" }));
     expect(onSubmit).toHaveBeenCalledWith({
       type: "insurance", custom_type_label: null, title: "Car insurance", vehicle_id: null,
-      document_number: null, issue_date: null, expiry_date: "2027-03-01", reminder_offsets: [30, 7], notes: null,
+      document_number: null, issue_date: null, expiry_date: "2027-03-01", reminder_offsets: [30, 14, 7, 1], notes: null,
     });
+  });
+
+  it("suggests only the default reminders that are still possible for a near expiry date", async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2026-10-31"); // 22 days from the pinned "today"
+    expect(await screen.findByText("3 of 4 reminders")).toBeInTheDocument(); // 14, 7 and 1: not the 30-day one
+    expect(screen.queryByText(/passed/)).not.toBeInTheDocument();
+  });
+
+  it("stops adjusting the suggested reminders once the user has chosen their own", async () => {
+    setup();
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2026-10-31");
+    await userEvent.click(await screen.findByRole("button", { name: "Clear all" }));
+    await userEvent.clear(screen.getByLabelText("Expiry date"));
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2026-12-31");
+    expect(await screen.findByText("0 of 4 reminders")).toBeInTheDocument();
+  });
+
+  it("sends the reminders chosen on the calendar as days before expiry", async () => {
+    const onSubmit = setup();
+    await userEvent.type(screen.getByLabelText("Name"), "Licence");
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2026-10-31");
+    await userEvent.click(await screen.findByRole("button", { name: "Clear all" }));
+    await userEvent.click(screen.getByRole("button", { name: /^Saturday, 24 October 2026/ }));
+    await userEvent.click(screen.getByRole("button", { name: /^Saturday, 17 October 2026/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add document" }));
+    expect(onSubmit.mock.calls[0][0].reminder_offsets).toEqual([14, 7]);
+  });
+
+  it("explains in the form when a chosen day is outside the allowed range", async () => {
+    const onSubmit = setup();
+    await userEvent.type(screen.getByLabelText("Name"), "Licence");
+    await userEvent.type(screen.getByLabelText("Issue date (optional)"), "2026-10-01");
+    await userEvent.type(screen.getByLabelText("Expiry date"), "2026-10-31");
+    await userEvent.click(screen.getByRole("button", { name: /^Monday, 5 October 2026/ }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("That day has already passed");
+    await userEvent.click(screen.getByRole("button", { name: "Add document" }));
+    expect(onSubmit.mock.calls[0][0].reminder_offsets).not.toContain(26); // the refused day was not added
   });
 });

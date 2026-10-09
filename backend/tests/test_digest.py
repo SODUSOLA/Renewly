@@ -8,7 +8,7 @@ from sqlalchemy import select
 
 from app.common.enums import DocumentType, ReminderStatus
 from app.core.database import SessionLocal
-from app.modules.notifications.rendering import DigestItem, render_expiry_digest
+from app.modules.notifications.service import DigestItem, render_expiry_digest
 from app.modules.reminders import service as reminders
 from app.modules.reminders.models import ReminderLog
 from tests.helpers import auth_headers
@@ -175,8 +175,8 @@ def test_footer_links_to_settings_only_when_a_url_is_known():
     assert "href" not in without[1] and "http" not in without[2]
 
 
-def test_the_message_builder_links_to_the_frontend_settings_page(client, ada, monkeypatch):
-    monkeypatch.setattr(reminders, "get_settings", lambda: SimpleNamespace(frontend_url="https://app.example.com/"))
+def test_the_message_builder_links_to_the_frontend_settings_page(client, ada, frontend_url):
+    frontend_url("https://app.example.com/")
     use_digest(client, ada)
     add_doc(client, ada, LAGOS_TODAY + timedelta(days=7))
     add_doc(client, ada, LAGOS_TODAY + timedelta(days=14), title="Other")

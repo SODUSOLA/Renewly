@@ -20,6 +20,7 @@ export interface ProfileChanges {
   full_name?: string;
   timezone?: string;
   reminder_style?: ReminderStyle;
+  report_emails?: boolean;
 }
 
 export interface RegisterInput {

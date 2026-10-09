@@ -97,6 +97,8 @@ interface RequestOptions {
   query?: Record<string, string | undefined | null>;
   // Endpoints like login/register must not send the token or trigger the refresh flow.
   public?: boolean;
+  // "text" returns the body as a string (used for CSV downloads); default is JSON.
+  as?: "json" | "text";
 }
 
 // One HTTP call. `credentials: "include"` makes the browser send and store the
@@ -125,6 +127,7 @@ async function request<T>(path: string, options: RequestOptions): Promise<T> {
   }
 
   if (response.status === 204) return undefined as T;
+  if (response.ok && options.as === "text") return (await response.text()) as T;
 
   let payload: unknown = null;
   try {

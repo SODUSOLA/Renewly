@@ -165,6 +165,8 @@ a:hover {
   display: flex;
   gap: 4px;
   flex: 1;
+  /* If a future link doesn't fit a phone, scroll the bar instead of stretching the page. */
+  overflow-x: auto;
 }
 .nav a {
   padding: 6px 12px;
@@ -185,6 +187,19 @@ a:hover {
   display: flex;
   align-items: center;
   gap: 10px;
+}
+.account-link {
+  padding: 5px 10px;
+  border-radius: 8px;
+  color: var(--muted);
+  text-decoration: none;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+.account-link:hover,
+.account-link.active {
+  background: var(--surface-2);
+  color: var(--text);
 }
 
 /* ---------- page ---------- */
@@ -346,6 +361,316 @@ textarea:hover {
 }
 .actions-start {
   justify-content: flex-start;
+}
+
+/* ---------- reminder calendar ---------- */
+
+.reminders {
+  margin: 4px 0 16px;
+}
+.calendar {
+  padding: 14px;
+}
+.calendar-placeholder {
+  padding: 18px;
+  text-align: center;
+  color: var(--muted);
+  background: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius);
+  margin: 0;
+}
+.calendar-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.calendar-head h3 {
+  font-size: 1rem;
+}
+.calendar-jump {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.calendar-row {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 3px;
+  margin-bottom: 3px;
+}
+.calendar-weekday {
+  text-align: center;
+  font-size: 0.75rem;
+  color: var(--muted);
+  padding: 2px 0;
+}
+.calendar-pad {
+  display: block;
+}
+.calendar-row [role="gridcell"] {
+  display: block;
+  min-width: 0;
+}
+.day {
+  width: 100%;
+  min-height: 46px;
+  padding: 3px 0 2px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  font: inherit;
+  color: var(--text);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  cursor: pointer;
+}
+.day-number {
+  font-weight: 600;
+  line-height: 1.1;
+}
+.day-marker {
+  font-size: 0.5625rem;
+  line-height: 1;
+  min-height: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+.day-allowed {
+  background: var(--valid-bg);
+}
+.day-allowed:hover {
+  border-color: var(--accent);
+}
+.day-blocked {
+  color: var(--muted);
+  opacity: 0.55;
+}
+.day-blocked:hover {
+  opacity: 0.8;
+  border-color: var(--border);
+}
+.day-today {
+  border-color: var(--text);
+}
+.day-issued {
+  border-color: var(--info-fg);
+  opacity: 1;
+}
+.day-issued .day-marker {
+  color: var(--info-fg);
+}
+.day-expiry {
+  border: 2px solid var(--expired-fg);
+  opacity: 1;
+  background: var(--expired-bg);
+}
+.day-expiry .day-marker {
+  color: var(--expired-fg);
+  font-weight: 700;
+}
+.day-selected {
+  background: var(--accent);
+  color: var(--accent-contrast);
+  opacity: 1;
+  border-color: var(--accent);
+}
+.day-selected .day-marker {
+  color: var(--accent-contrast);
+  font-size: 0.75rem;
+}
+.day-selected.day-expiry {
+  border: 2px solid var(--expired-fg);
+}
+.calendar-legend {
+  display: flex;
+  gap: 14px;
+  flex-wrap: wrap;
+  list-style: none;
+  margin: 12px 0 0;
+  padding: 0;
+  font-size: 0.8125rem;
+  color: var(--muted);
+}
+.swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  vertical-align: -1px;
+  border: 1px solid var(--border);
+}
+.swatch-selected {
+  background: var(--accent);
+}
+.swatch-expiry {
+  background: var(--expired-bg);
+  border: 2px solid var(--expired-fg);
+}
+.swatch-issued {
+  border: 2px solid var(--info-fg);
+}
+.swatch-allowed {
+  background: var(--valid-bg);
+}
+.calendar-note {
+  min-height: 2.6em;
+  margin: 10px 0;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.calendar-note-error {
+  color: var(--expired-fg);
+  font-weight: 600;
+}
+.reminder-summary {
+  border-top: 1px solid var(--border);
+  padding-top: 10px;
+}
+.chips {
+  list-style: none;
+  margin: 8px 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 4px 3px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.875rem;
+}
+.chip-past {
+  color: var(--muted);
+  text-decoration: line-through;
+}
+.chip button {
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  border-radius: 999px;
+  width: 22px;
+  height: 22px;
+  line-height: 1;
+}
+.chip button:hover {
+  background: var(--border);
+}
+@media (max-width: 640px) {
+  .calendar {
+    padding: 10px 6px;
+  }
+  .day {
+    min-height: 44px;
+  }
+  .day-marker {
+    font-size: 0.5rem;
+    letter-spacing: 0;
+  }
+}
+
+/* ---------- reports ---------- */
+
+.head-actions {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.head-actions select {
+  width: auto;
+}
+.stat .muted {
+  display: block;
+  margin-top: 2px;
+}
+.chart {
+  display: flex;
+  align-items: stretch;
+  gap: 6px;
+  height: 220px;
+  padding: 16px 12px 12px;
+}
+.chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 4px;
+}
+.chart-bar {
+  display: block;
+  width: 100%;
+  max-width: 34px;
+  background: var(--accent);
+  border-radius: 4px 4px 0 0;
+  min-height: 0;
+}
+.chart-value,
+.chart-label {
+  font-size: 0.6875rem;
+  color: var(--muted);
+  line-height: 1.2;
+}
+.chart-value {
+  height: 14px;
+}
+.two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0 20px;
+}
+.breakdown {
+  list-style: none;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.breakdown-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+.share {
+  height: 6px;
+  margin: 6px 0 4px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.share span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+@media (max-width: 640px) {
+  .two-col {
+    grid-template-columns: 1fr;
+  }
+  .head-actions {
+    width: 100%;
+  }
+  .head-actions .btn {
+    flex: 1;
+  }
+  .chart {
+    gap: 3px;
+    padding-inline: 6px;
+  }
 }
 
 /* ---------- choice cards (radio groups) ---------- */
@@ -555,6 +880,12 @@ legend {
   background: var(--surface-2);
   border: 1px solid var(--border);
   border-radius: 6px;
+}
+.history-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
 }
 .history li {
   padding: 12px 0;

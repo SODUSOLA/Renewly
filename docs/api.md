@@ -72,7 +72,8 @@ Timestamps (`created_at`...) are UTC.
 Emails are case-insensitive. Returns the user (never the password):
 ```json
 { "id": "…", "email": "ada@example.com", "full_name": "Ada Obi",
-  "timezone": "Africa/Lagos", "reminder_style": "each", "created_at": "2026-10-08T09:00:00Z" }
+  "timezone": "Africa/Lagos", "reminder_style": "each", "report_emails": true,
+  "created_at": "2026-10-08T09:00:00Z" }
 ```
 Errors: `409` email already registered, `422` bad timezone or short password.
 
@@ -99,6 +100,7 @@ Change your own settings. Send only the fields you want to change; `null` is rej
 | Field | Values |
 |---|---|
 | `reminder_style` | `each` (default): one email per document reminder. `digest`: one email a day listing everything due |
+| `report_emails` | `true` (default) to receive the six-monthly spending report, `false` to opt out |
 | `timezone` | An IANA name; it decides when "8am" and "today" are for you, from the next reminder run |
 | `full_name` | 1-150 characters |
 
@@ -262,6 +264,19 @@ are excluded.
 |---|---|
 | `GET /health` | Liveness: `{"status": "ok"}` while the process runs |
 | `GET /health/ready` | Readiness: `200 {"status": "ready"}`, or `503` if the database is unreachable |
+
+## Emails the app sends
+
+| Email | When | Can be turned off? |
+|---|---|---|
+| Welcome | Right after sign-up | No |
+| Password reset | After `POST /auth/forgot-password` for a real account | No |
+| Password changed | After a successful `POST /auth/reset-password`: tells the owner, with a link to reset again if it wasn't them | No (security) |
+| Reminder / daily digest | When a document hits one of its reminder days (see below) | Per document (empty reminder list) or via `reminder_style` |
+| Six-monthly report | First week of **January** (covering July to December) and **July** (covering January to June), from 08:00 in the user's timezone: spending, biggest categories and vehicles, and what expires in the next six months with a rough cost | Yes: `report_emails: false` |
+
+Accounts with no renewals in the period and nothing expiring soon get no report. Each email is sent
+at most once per user per period.
 
 ## Reminder emails
 

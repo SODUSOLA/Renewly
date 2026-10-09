@@ -28,6 +28,8 @@ class ReminderStatus(str, enum.Enum):
     PENDING = "pending"
     SENT = "sent"
     FAILED = "failed"
+    # Used by periodic emails when there was nothing worth sending to this user.
+    SKIPPED = "skipped"
 
 
 # func: store the enum's value (e.g. 'driver_license'), not its name
@@ -51,3 +53,19 @@ class ReminderStyle(str, enum.Enum):
 
     EACH = "each"
     DIGEST = "digest"
+
+
+# human-readable names for document types (custom documents show their own label instead)
+DOCUMENT_TYPE_LABELS = {
+    DocumentType.DRIVER_LICENSE: "Driver's license",
+    DocumentType.INSURANCE: "Insurance",
+    DocumentType.VEHICLE_REGISTRATION: "Vehicle registration",
+    DocumentType.PERMIT: "Permit",
+    DocumentType.CUSTOM: "Other",
+}
+
+
+# func to name a document's kind for people
+def document_type_label(doc_type: DocumentType, custom_label: str | None) -> str:
+    """Return the custom label for 'custom' documents, else the standard type name."""
+    return custom_label or DOCUMENT_TYPE_LABELS[doc_type]

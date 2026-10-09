@@ -1,0 +1,47 @@
+Hi {{ full_name }},
+
+Your renewals report for {{ period_label }}
+
+{% if renewals > 0 %}
+Spent on renewals: {{ total | naira }}
+Renewals: {{ renewals }}{% if change_pct is not none %} ({{ "up" if change_pct > 0 else "down" if change_pct < 0 else "unchanged" }}{% if change_pct != 0 %} {{ change_pct | abs }}%{% endif %} on the six months before, {{ previous_total | naira }}){% endif %}
+
+{% if missing_cost_count > 0 %}
+Note: {{ missing_cost_count }} {{ "renewal has" if missing_cost_count == 1 else "renewals have" }} no cost recorded, so the total is understated.
+
+{% endif %}
+{% if by_type %}
+Where it went:
+{% for row in by_type %}
+- {{ row.label }}: {{ row.total | naira }} ({{ row.renewals }})
+{% endfor %}
+
+{% endif %}
+{% if by_vehicle | length > 1 or (by_vehicle | length == 1 and by_vehicle[0].label != "No vehicle") %}
+By vehicle:
+{% for row in by_vehicle %}
+- {{ row.label }}: {{ row.total | naira }} ({{ row.renewals }})
+{% endfor %}
+
+{% endif %}
+{% else %}
+You didn't mark any renewals in this period.
+
+{% endif %}
+{% if upcoming %}
+Coming up in the next six months:
+{% for item in upcoming %}
+- {{ item.title }} ({{ item.kind }}{% if item.vehicle_label %} · {{ item.vehicle_label }}{% endif %}): {{ item.expiry_date | date_short }}, {% if item.estimated_cost is not none %}about {{ item.estimated_cost | naira }}{% else %}no price on record{% endif %}
+
+{% endfor %}
+{% if estimate_total is not none %}
+Roughly {{ estimate_total | naira }} if each costs what it did last time ({{ estimate_count }} of {{ upcoming | length }} have a past price). A guide, not a quote.
+{% endif %}
+
+{% endif %}
+{% if app_url %}
+Full report: {{ reports_url }}
+
+{% endif %}
+You get this summary every six months, in January and July.{% if settings_url %} Turn it off here: {{ settings_url }}{% endif %}
+

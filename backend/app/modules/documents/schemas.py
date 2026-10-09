@@ -114,6 +114,18 @@ class DocumentRead(BaseModel):
     days_left: int | None = None
 
 
+# class for the body of PATCH /documents/{id}/renewals/{renewal_id}
+class RenewalUpdate(BaseModel):
+    """Fix or add the cost and notes of a past renewal.
+
+    Unlike most PATCH bodies an explicit `null` is meaningful here: it clears the value.
+    Fields that are not sent stay as they are.
+    """
+
+    cost: Decimal | None = Field(default=None, ge=0, max_digits=12, decimal_places=2)
+    notes: str | None = None
+
+
 # class for one renewal record as returned by the API
 class RenewalRead(BaseModel):
     """One entry in a document's renewal history."""

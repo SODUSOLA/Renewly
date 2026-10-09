@@ -24,11 +24,10 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.orm import Session
 
 from app.common.enums import ReminderChannel, ReminderStatus, ReminderStyle
-from app.core.config import get_settings
 from app.modules.auth.models import User
 from app.modules.documents.models import Document
 from app.modules.notifications.email import EmailMessage, send_email
-from app.modules.notifications.rendering import DigestItem, render_expiry_digest, render_expiry_reminder
+from app.modules.notifications.service import DigestItem, render_expiry_digest, render_expiry_reminder
 from app.modules.reminders.models import ReminderLog
 
 logger = logging.getLogger(__name__)
@@ -154,6 +153,7 @@ def build_message(due: DueReminder, log_id: uuid.UUID) -> EmailMessage:
         expiry_date=document.expiry_date,
         days_left=due.days_left,
         vehicle_label=vehicle_label,
+        document_id=str(document.id),
     )
     return EmailMessage(
         to=due.user.email,
@@ -208,10 +208,7 @@ def build_digest_message(user: User, claimed: list[tuple[DueReminder, uuid.UUID]
                 vehicle_label=f"{vehicle.nickname} ({vehicle.plate_number})" if vehicle else None,
             )
         )
-    frontend = get_settings().frontend_url.rstrip("/")
-    subject, html, text = render_expiry_digest(
-        full_name=user.full_name, items=items, settings_url=f"{frontend}/settings" if frontend else None
-    )
+    subject, html, text = render_expiry_digest(full_name=user.full_name, items=items)
     return EmailMessage(
         to=user.email,
         subject=subject,
@@ -279,7 +276,7 @@ def run_due_reminders(
 ) -> ReminderRunSummary:
     """Send every reminder that is due at `now` and has not been sent yet.
 
-    Safe to run as often as you like (the Beat schedule runs it hourly): the
+    Safe to run as often as set (the Beat schedule runs it hourly): the
     claim step guarantees each reminder is delivered once, and failed sends are
     retried on later runs while the reminder is still due. Reminders are grouped by
     user: users on the "digest" style get one email for the group, everyone else gets

@@ -17,6 +17,7 @@ from app.modules.documents.schemas import (
     DocumentCreate,
     DocumentRead,
     DocumentUpdate,
+    RenewalUpdate,
     RenewRequest,
 )
 from app.modules.vehicles.models import Vehicle
@@ -28,6 +29,11 @@ EXPIRING_SOON_DAYS = 30
 # class for "no such document for this user"
 class DocumentNotFound(Exception):
     """Raised when the document is missing, deleted, or belongs to another user."""
+
+
+# class for "no such renewal on this document"
+class RenewalNotFound(Exception):
+    """Raised when the renewal does not exist on that (live, owned) document."""
 
 
 # class for data that breaks a business rule
@@ -223,3 +229,26 @@ def list_renewals(
             .order_by(RenewalHistory.new_expiry.desc())
         )
     )
+
+
+# func to correct the cost or notes of a past renewal
+def update_renewal(
+    db: Session, user: User, document_id: uuid.UUID, renewal_id: uuid.UUID, data: RenewalUpdate
+) -> RenewalHistory:
+    """Set, change or clear (send null) a renewal's cost and notes.
+
+    Raises DocumentNotFound if the document is missing, deleted or not the user's, and
+    RenewalNotFound if the renewal is not on that document.
+    """
+    document = _get_document(db, user, document_id)
+    renewal = db.scalar(
+        select(RenewalHistory).where(
+            RenewalHistory.id == renewal_id, RenewalHistory.document_id == document.id
+        )
+    )
+    if renewal is None:
+        raise RenewalNotFound
+    for field, value in data.model_dump(exclude_unset=True).items():
+        setattr(renewal, field, value)
+    db.commit()
+    return renewal

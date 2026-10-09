@@ -1,0 +1,18 @@
+Hi {{ full_name }},
+
+{{ title }} expires {{ days_left | when }}.
+
+Document: {{ title }}
+Type: {{ kind }}
+{% if vehicle_label %}
+Vehicle: {{ vehicle_label }}
+{% endif %}
+Expires on: {{ expiry_date | date_long }}
+
+Renew it in time, then mark it as renewed so we can stop reminding you.
+{% if app_url %}
+
+Open it: {{ document_url }}
+{% endif %}
+
+{% include "_footer.txt" %}

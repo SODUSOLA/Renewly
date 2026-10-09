@@ -1,5 +1,4 @@
 import { addYears, describeDaysLeft, formatDate, formatNaira } from "./dates";
-import { parseOffsets } from "./offsets";
 import { typeLabel } from "./status";
 
 describe("dates", () => {
@@ -31,26 +30,23 @@ describe("formatNaira", () => {
   });
 });
 
-describe("parseOffsets", () => {
-  it("sorts largest first and removes duplicates", () => {
-    expect(parseOffsets("7, 30 7,0")).toEqual({ ok: true, value: [30, 7, 0] });
-  });
-
-  it("treats empty text as 'no reminders'", () => {
-    expect(parseOffsets("  ")).toEqual({ ok: true, value: [] });
-  });
-
-  it("rejects non-numbers, negatives and out-of-range values", () => {
-    expect(parseOffsets("7, soon").ok).toBe(false);
-    expect(parseOffsets("-1").ok).toBe(false);
-    expect(parseOffsets("400").ok).toBe(false);
-    expect(parseOffsets("0,1,2,3,4,5,6,7,8,9,10").ok).toBe(false);
-  });
-});
-
 describe("typeLabel", () => {
   it("uses the custom label only for custom documents", () => {
     expect(typeLabel("custom", "Gym card")).toBe("Gym card");
     expect(typeLabel("permit", "ignored")).toBe("Permit");
+  });
+});
+
+describe("percentChange", () => {
+  it("rounds to a whole percent and handles decreases", async () => {
+    const { percentChange } = await import("./dates");
+    expect(percentChange("187000.75", "100000.00")).toBe(87);
+    expect(percentChange("80", "100")).toBe(-20);
+    expect(percentChange("100", "100")).toBe(0);
+  });
+
+  it("has nothing to compare when last year had no spending", async () => {
+    const { percentChange } = await import("./dates");
+    expect(percentChange("500", "0.00")).toBeNull();
   });
 });

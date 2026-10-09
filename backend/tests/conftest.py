@@ -16,6 +16,12 @@ _test_url = _dev_url.set(database=f"{_dev_url.database}_test")
 os.environ["DATABASE_URL"] = _test_url.render_as_string(hide_password=False)
 # Keep rate-limit counters in-process so tests need no Redis.
 os.environ["RATE_LIMIT_BACKEND"] = "memory"
+# Tests must NEVER use real credentials from a developer's .env: no real emails, no Sentry reports,
+# and no dependence on a frontend URL that happens to be configured locally.
+os.environ["RESEND_API_KEY"] = ""
+os.environ["SENTRY_DSN"] = ""
+os.environ["FRONTEND_URL"] = ""
+os.environ["APP_ENV"] = "development"
 get_settings.cache_clear()
 
 import pytest  # noqa: E402
@@ -93,3 +99,18 @@ def bola(client):
 def _fresh_rate_limits():
     """Reset rate-limit counters so one test's requests never count against another."""
     reset_rate_limits()
+
+
+# func to pretend the web app lives at a URL (links in emails are built from it)
+@pytest.fixture
+def frontend_url(monkeypatch):
+    """Call `frontend_url("https://app.example.com")` inside a test to configure email links."""
+    from types import SimpleNamespace
+
+    from app.modules.notifications import service, templating
+
+    def set_url(url: str) -> None:
+        for module in (service, templating):
+            monkeypatch.setattr(module, "get_settings", lambda: SimpleNamespace(frontend_url=url))
+
+    return set_url

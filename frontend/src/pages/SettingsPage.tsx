@@ -25,6 +25,7 @@ export function SettingsPage() {
   const [fullName, setFullName] = useState(user?.full_name ?? "");
   const [timezone, setTimezone] = useState(user?.timezone ?? "Africa/Lagos");
   const [style, setStyle] = useState<ReminderStyle>(user?.reminder_style ?? "each");
+  const [reports, setReports] = useState(user?.report_emails ?? true);
   const [busy, setBusy] = useState(false);
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
@@ -37,6 +38,7 @@ export function SettingsPage() {
   if (fullName.trim() !== user.full_name) changes.full_name = fullName.trim();
   if (timezone !== user.timezone) changes.timezone = timezone;
   if (style !== user.reminder_style) changes.reminder_style = style;
+  if (reports !== user.report_emails) changes.report_emails = reports;
   const dirty = Object.keys(changes).length > 0;
 
   function edited<T>(setter: (value: T) => void) {
@@ -94,6 +96,21 @@ export function SettingsPage() {
                 </span>
               </label>
             ))}
+          </fieldset>
+        </section>
+
+        <section className="section">
+          <fieldset>
+            <legend>Other emails</legend>
+            <label className="choice">
+              <input type="checkbox" checked={reports} onChange={(e) => edited(setReports)(e.target.checked)} />
+              <span>
+                <strong>Six-monthly spending report</strong>
+                <span className="muted small">
+                  What you spent on renewals, what's coming up and a rough cost for it. Sent in January and July. We also email you when you join and when your password changes.
+                </span>
+              </span>
+            </label>
           </fieldset>
         </section>
 

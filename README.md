@@ -7,6 +7,7 @@ lapse.
 - Reminders go out at configurable offsets (default 90, 30, 14, 7 and 1 days before expiry), at 8am **in each user's own timezone**.
 - Each reminder is sent **exactly once**, even if the job runs many times or two workers collide.
 - Choose one email per reminder or a **single daily digest** of everything due (Settings page).
+- A **spending report every six months** (January and July), a welcome email, and security emails when your password changes. Opt out of the report in Settings.
 - A dashboard groups documents as **expired / expiring soon / valid** with days left.
 - "Mark as renewed" moves the expiry forward, keeps a renewal history and re-arms the reminders.
 
@@ -64,6 +65,16 @@ job right now instead of waiting for the hour:
 ```bash
 python -c "from app.modules.reminders.tasks import send_due_reminders; print(send_due_reminders())"
 ```
+
+## Emails
+
+All email wording and layout lives in [`backend/app/modules/notifications/templates/`](backend/app/modules/notifications/templates) (one `.subject`, `.html` and `.txt` file per email). To see every design without sending anything:
+
+```bash
+cd backend && python -m app.modules.notifications.preview   # then open email-previews/index.html
+```
+
+The test suite never uses a real email key, even if your `.env` has one.
 
 ## Tests
 

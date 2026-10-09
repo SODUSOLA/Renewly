@@ -1,0 +1,16 @@
+Hi {{ full_name }},
+
+{% if items | length == 1 %}
+{{ items[0].title }} expires {{ items[0].days_left | when }}.
+{% else %}
+{{ items | length }} documents need your attention. The most urgent expires {{ items[0].days_left | when }}.
+{% endif %}
+
+{% for item in items %}
+- {{ item.title }} ({{ item.kind }}{% if item.vehicle_label %} · {{ item.vehicle_label }}{% endif %}): expires {{ item.days_left | when }}, on {{ item.expiry_date | date_long }}
+{% endfor %}
+
+Mark each one as renewed once done.
+
+You are receiving this once a day because you chose a daily digest.{% if settings_url %} Change it here: {{ settings_url }}{% endif %}
+

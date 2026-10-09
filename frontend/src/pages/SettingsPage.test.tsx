@@ -33,6 +33,19 @@ describe("SettingsPage", () => {
     expect(screen.getByRole("button", { name: "Save changes" })).toBeDisabled();
   });
 
+  it("lets the user turn the six-monthly report off and on", async () => {
+    const { calls } = await open({
+      "PATCH /auth/me": ({ body }) => ({ body: { ...USER, ...(body as object) } }),
+    });
+    const box = screen.getByLabelText(/Six-monthly spending report/);
+    expect(box).toBeChecked();
+    await userEvent.click(box);
+    await userEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText("Saved.");
+    expect(calls.find((c) => c.key === "PATCH /auth/me")?.body).toEqual({ report_emails: false });
+    expect(screen.getByLabelText(/Six-monthly spending report/)).not.toBeChecked();
+  });
+
   it("describes each choice so the user knows what they get", async () => {
     await open();
     expect(screen.getByText(/single email listing them, most urgent first/i)).toBeInTheDocument();

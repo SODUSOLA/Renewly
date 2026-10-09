@@ -1,0 +1,16 @@
+{% extends "base.html" %}
+{% from "_macros.html" import button %}
+{% block content %}
+<p style="margin: 0 0 12px;">Hi {{ full_name }},</p>
+<p style="margin: 0 0 14px; font-size: 22px; font-weight: 700; line-height: 1.3;">Welcome to {{ app_name }}.</p>
+<p style="margin: 0 0 14px;">Add the documents that expire (your driver's licence, car insurance, registration, permits) and we'll email you before they do, so nothing lapses by surprise.</p>
+<ol style="margin: 0 0 14px; padding-left: 20px;">
+  <li style="margin-bottom: 6px;"><strong>Add a document</strong> with its expiry date.</li>
+  <li style="margin-bottom: 6px;"><strong>Pick your reminder days</strong> on the calendar.</li>
+  <li><strong>Renew it, then mark it as renewed</strong> and we start watching the new date.</li>
+</ol>
+<p style="margin: 0;">Reminders arrive at {{ send_hour }}am in your timezone ({{ timezone }}).</p>
+{% if app_url %}
+{{ button(app_url ~ "/documents?new=1", "Add your first document") }}
+{% endif %}
+{% endblock %}

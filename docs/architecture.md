@@ -23,6 +23,44 @@ Two processes share one codebase and one database: the **API** (request/response
 and the **worker** (the scheduled reminder job). Redis carries the Celery queue
 and the rate-limit counters. Nothing else is stateful.
 
+## Email
+
+Everything the app emails lives in two places that never mix:
+
+| Where | What | Changed by |
+|---|---|---|
+| `app/modules/notifications/templates/` | **All wording and layout.** Each email is `<name>.subject`, `<name>.html`, `<name>.txt`, sharing `base.html` (layout), `_macros.html` (button) and `_footer.txt` | Anyone editing copy or design; no code involved |
+| `app/modules/notifications/service.py` | **One function per email** (`build_welcome_email`, `send_password_reset_email`, `render_expiry_digest`, `build_cost_report_email`...): collects the data, renders its template, returns/sends the message | Developers |
+
+`templating.py` is the small engine between them (Jinja2): HTML is escaped automatically, a template that
+uses a variable the code didn't provide is an error rather than a blank, and subjects are collapsed to
+one line so a value containing a line break can't inject headers. `email.py` is transport only (Resend).
+
+| Email | Template | Function that uses it | Triggered by |
+|---|---|---|---|
+| Welcome | `welcome` | `send_welcome_email` | `POST /auth/register` (background task) |
+| Password reset | `password_reset` | `send_password_reset_email` | `POST /auth/forgot-password` |
+| Password changed | `password_changed` | `send_password_changed_email` | `POST /auth/reset-password` |
+| Reminder | `expiry_reminder` | `render_expiry_reminder` | hourly reminder job |
+| Daily digest | `expiry_digest` | `render_expiry_digest` | hourly reminder job (digest users) |
+| Six-monthly report | `cost_report` | `build_cost_report_email` | hourly report job, first week of Jan/Jul |
+
+Emails sent from a request (welcome, reset, password changed) run as background tasks and never raise: a
+provider outage must not break sign-up or a reset. Look at every design without sending anything with
+`python -m app.modules.notifications.preview`; the tests render every template with the same sample data, so
+a broken template fails the build.
+
+### The six-monthly report
+
+`reports/periodic.py`. Celery Beat runs it hourly at minute 20, but outside the first seven days of January and
+July it returns immediately. Inside that window each user is handled from 08:00 local time, and the week-long
+window means a day of downtime costs nobody their report. "Once per user per period" is enforced like reminders:
+a row in `email_dispatch` (unique on user, kind, period such as `2026-H1`) is claimed with one atomic
+`INSERT ... ON CONFLICT` before sending; `sent` and `skipped` rows are never retaken, `failed` and stale `pending` rows
+are. Users with `report_emails` off, inactive users, and accounts with nothing to report are not sent anything
+(the last are recorded as `skipped` so they aren't re-evaluated every hour). The "coming up" list estimates each cost
+from the document's last recorded renewal cost and says it is an estimate.
+
 ## Layers
 
 Every feature lives in `app/modules/<name>/` and is split the same way, so you
@@ -170,6 +208,8 @@ database) are for orchestrators and uptime monitors.
 |---|---|
 | Synchronous SQLAlchemy 2.0 + psycopg 3 | Celery tasks are synchronous; one DB style is simpler. Move to async only if load demands it |
 | Status is derived, never stored | A stored status goes stale at midnight and needs a job to maintain; computing it is one subtraction |
+| Templates as files in one folder, not strings in code | Copy and design can change without touching Python, and every email shares one layout |
+| Six-month report on fixed calendar halves (Jan/Jul) | Everyone gets it at the same, memorable time; per-user anniversaries would scatter emails across the year for no benefit |
 | Soft delete for documents only | Documents carry history; vehicles are simple records and are hard-deleted |
 | Hourly job + local 08:00 gate, not one daily run | Users in different timezones all get a morning email, and a transient failure is retried within the day |
 | Per-document emails by default, digest opt-in | Per-document was the simplest correct v1 and keeps existing users' behaviour; the digest is a per-user setting that batches the same reminders |

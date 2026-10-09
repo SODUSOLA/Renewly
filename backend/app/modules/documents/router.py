@@ -15,6 +15,7 @@ from app.modules.documents.schemas import (
     DocumentRead,
     DocumentUpdate,
     RenewalRead,
+    RenewalUpdate,
     RenewRequest,
 )
 
@@ -137,3 +138,21 @@ def list_renewals(
         return service.list_renewals(db, user, document_id)
     except service.DocumentNotFound:
         raise _NOT_FOUND
+
+
+# func to correct the cost or notes of a past renewal
+@router.patch("/{document_id}/renewals/{renewal_id}", response_model=RenewalRead)
+def update_renewal(
+    document_id: uuid.UUID,
+    renewal_id: uuid.UUID,
+    body: RenewalUpdate,
+    db: Session = Depends(get_db),
+    user: User = Depends(get_current_user),
+) -> RenewalHistory:
+    """Add, change or clear (send null) what a renewal cost. Returns 404 if not found."""
+    try:
+        return service.update_renewal(db, user, document_id, renewal_id, body)
+    except service.DocumentNotFound:
+        raise _NOT_FOUND
+    except service.RenewalNotFound:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Renewal not found")

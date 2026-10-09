@@ -1,0 +1,10 @@
+{# A bulletproof button: a table cell, because email clients ignore most CSS on <a>. #}
+{% macro button(url, label) %}
+<table role="presentation" cellpadding="0" cellspacing="0" style="margin: 22px 0 6px;">
+  <tr>
+    <td style="background: #0f766e; border-radius: 8px;">
+      <a href="{{ url }}" style="display: inline-block; padding: 12px 22px; color: #ffffff; font-weight: 600; text-decoration: none;">{{ label }}</a>
+    </td>
+  </tr>
+</table>
+{% endmacro %}

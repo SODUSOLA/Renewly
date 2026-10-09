@@ -31,7 +31,7 @@ DEFAULT_REMINDER_OFFSETS = [90, 30, 14, 7, 1]
 
 
 
-#  a document class
+# document class
 class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     """A document with an expiry date that the user wants to be reminded about.
 
@@ -100,7 +100,7 @@ class Document(UUIDPrimaryKeyMixin, TimestampMixin, Base):
         return (self.expiry_date - today).days
 
 
-# class: audit record written each time a document is marked as renewed
+# lass for audit record written each time a document is marked as renewed
 class RenewalHistory(UUIDPrimaryKeyMixin, Base):
     """Audit record written each time a document is marked as renewed.
 

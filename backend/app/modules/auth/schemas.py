@@ -64,6 +64,7 @@ class UserRead(BaseModel):
     full_name: str
     timezone: str
     reminder_style: ReminderStyle
+    report_emails: bool
     created_at: datetime
 
 
@@ -98,6 +99,7 @@ class ProfileUpdate(BaseModel):
     full_name: str | None = Field(default=None, min_length=1, max_length=150)
     timezone: str | None = Field(default=None, max_length=64)
     reminder_style: ReminderStyle | None = None
+    report_emails: bool | None = None
 
     # func to reject names that are not real IANA timezones
     @field_validator("timezone")
