@@ -14,9 +14,12 @@ The `X-Request-ID` and `Retry-After` response headers are readable by the page.
 Authorization: Bearer <access_token>
 ```
 
-Tokens last `ACCESS_TOKEN_EXPIRE_MINUTES` (default 30). Everything except
-`/auth/register`, `/auth/login`, `/auth/forgot-password`, `/auth/reset-password`
-and `/health*` requires a token.
+Access tokens are short-lived (`ACCESS_TOKEN_EXPIRE_MINUTES`, default 15). Login also sets
+an **`HttpOnly` refresh cookie** (30 days, sliding, 90 days at most) that
+`POST /auth/refresh` trades for a new access token, so users stay signed in without
+JavaScript ever holding a long-lived credential. See [Sessions](#sessions) below.
+Everything except `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout`,
+`/auth/forgot-password`, `/auth/reset-password` and `/health*` requires an access token.
 
 **Ownership.** You only ever see your own data. Asking for someone else's vehicle
 or document returns `404`, exactly as if it did not exist.
@@ -77,12 +80,24 @@ Errors: `409` email already registered, `422` bad timezone or short password.
 { "email": "ada@example.com", "password": "correct-horse" }
 ```
 ```json
-{ "access_token": "eyJ…", "token_type": "bearer" }
+{ "access_token": "eyJ…", "token_type": "bearer", "expires_in": 900 }
 ```
-Any failure is a `401 "Incorrect email or password"`; it never says which part was wrong.
+`expires_in` is in seconds. The response also sets the refresh cookie (below); the refresh
+token is never in the JSON body. Any failure is a `401 "Incorrect email or password"`;
+it never says which part was wrong.
 
 ### `GET /auth/me` → 200
 Returns the logged-in user (same shape as register).
+
+### `POST /auth/refresh` → 200
+No body. The browser sends the refresh cookie automatically (use `credentials: "include"`).
+Returns a new access token in the same shape as login, and sets a **new** refresh cookie
+(the old one stops working). `401` if the cookie is missing, expired, revoked or was
+already used; the response also deletes the cookie. Rate limit: 60 / min per IP.
+
+### `POST /auth/logout` → 204
+Revokes this device's login and deletes the cookie. Harmless when already signed out.
+Other devices stay signed in.
 
 ### `POST /auth/forgot-password` → 202
 ```json
@@ -100,6 +115,27 @@ The email contains a link to the web app's reset page (or the bare token when `F
 every other outstanding reset token for that account.
 
 ---
+
+## Sessions
+
+Login sets one cookie, `renewly_refresh`:
+
+| Attribute | Value | Why |
+|---|---|---|
+| `HttpOnly` | yes | Page scripts cannot read it, so an injected script cannot steal the login |
+| `Secure` | in production | Only sent over HTTPS |
+| `SameSite` | `Lax` (configurable) | Not sent on cross-site requests; see `COOKIE_SAMESITE` |
+| `Path` | `/auth` | Only the auth endpoints ever receive it |
+| `Max-Age` | 30 days | Slides forward each time it is used |
+
+How it behaves:
+
+- **Rotation.** Every `/auth/refresh` returns a new refresh token and retires the old one.
+- **Theft detection.** Presenting a retired token again (after a 10-second grace window for two tabs refreshing at once) means a copy was stolen, so that login's whole chain is revoked and the real user signs in again.
+- **Limits.** 30 days idle, 90 days absolute, then a fresh sign-in is required.
+- **Sign-out everywhere.** Resetting the password revokes every login for the account.
+- **CSRF.** `/auth/refresh` and `/auth/logout` reject browser requests whose `Origin` is not in `CORS_ORIGINS` (`403`). Requests with no `Origin` (curl, apps) are allowed. This backs up the `SameSite` cookie.
+- **CORS.** Browser pages call these endpoints with credentials, so the API sends `Access-Control-Allow-Credentials: true` for the allowed origins only.
 
 ## Vehicles
 

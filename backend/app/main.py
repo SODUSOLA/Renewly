@@ -29,10 +29,11 @@ register_error_handlers(app)
 register_middleware(app)
 # Added last so it is the outermost layer: even 401/429/500 responses carry CORS
 # headers, otherwise the browser hides the real error behind a generic CORS failure.
-# Auth uses a bearer header (no cookies), so credentials are not enabled.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    # The refresh cookie must be accepted cross-origin (requires explicit origins, as here).
+    allow_credentials=True,
     allow_methods=["GET", "POST", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     expose_headers=["X-Request-ID", "Retry-After"],

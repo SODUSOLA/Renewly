@@ -17,7 +17,7 @@ init_sentry()
 celery_app = Celery(
     "expiry_tracker",
     broker=get_settings().redis_url,
-    include=["app.modules.reminders.tasks"],
+    include=["app.modules.reminders.tasks", "app.modules.auth.tasks"],
 )
 
 celery_app.conf.update(
@@ -30,7 +30,12 @@ celery_app.conf.update(
         "send-due-reminders-hourly": {
             "task": "reminders.send_due_reminders",
             "schedule": crontab(minute=5),
-        }
+        },
+        # Housekeeping: drop refresh tokens that expired long ago.
+        "purge-refresh-tokens-daily": {
+            "task": "auth.purge_expired_refresh_tokens",
+            "schedule": crontab(hour=3, minute=30),
+        },
     },
 )
 

@@ -52,3 +52,16 @@ export function makeDoc(overrides: Record<string, unknown> = {}) {
     status: "valid", days_left: 144, ...overrides,
   };
 }
+
+const UNAUTHORIZED = { detail: "Not authenticated", code: "unauthorized" };
+
+// Routes for a visitor with NO session: the first-load refresh is rejected.
+export const SIGNED_OUT = {
+  "POST /auth/refresh": () => ({ status: 401, body: UNAUTHORIZED }),
+};
+
+// Routes for a visitor with a valid refresh cookie: refresh succeeds, /auth/me works.
+export const SIGNED_IN = {
+  "POST /auth/refresh": () => ({ body: { access_token: "tok", token_type: "bearer", expires_in: 900 } }),
+  "GET /auth/me": () => ({ body: USER }),
+};

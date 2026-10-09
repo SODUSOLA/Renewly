@@ -63,7 +63,8 @@ its own. Service → **Settings → Source → Root Directory**, and **Settings 
 | `LOG_FORMAT` | `json` |
 | `CORS_ORIGINS` | The web app's public URL, e.g. `https://renewly-web.up.railway.app` (**`api` only matters, but set it everywhere for consistency**) |
 | `FRONTEND_URL` | The same web app URL; password-reset emails link to `<FRONTEND_URL>/reset-password` |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | See [Sessions](#sessions) |
+| `COOKIE_SAMESITE` | `lax` when the web app and API share a site (see [Sessions and cookies](#sessions-and-cookies)) |
+| `COOKIE_PATH` | Leave at `/auth` unless the API is served under a path prefix |
 | `SENTRY_DSN` | Optional: your Sentry project's DSN |
 
 **`web`:**
@@ -129,15 +130,27 @@ bad release included a migration, roll the schema back first with
 **Backups.** Turn on Postgres backups for the database service in Railway and test
 a restore once. The data (documents, history) is the product.
 
-### Sessions
+### Sessions and cookies
 
-Access tokens expire after `ACCESS_TOKEN_EXPIRE_MINUTES` (default **30**) and there is no
-refresh token yet, so by default a user is signed out every 30 minutes (the web app handles
-this by returning to the sign-in page with "Your session ended"). For a reminders app that
-people open occasionally, set it to something like `10080` (7 days). The trade-off is that a
-stolen token (the web app keeps it in `localStorage`) stays valid for that long. The
-proper fix is short-lived tokens plus a refresh token in an `HttpOnly` cookie; it is the
-first item on the v2 list.
+Logins use a short-lived access token (15 minutes, in page memory) plus a refresh token in an
+`HttpOnly` cookie that renews it silently; see [architecture.md](architecture.md#sessions).
+That cookie has one hard requirement: **the web app and the API must be on the same
+site.**
+
+| Setup | Works? | Settings |
+|---|---|---|
+| **Your own domain, two subdomains**, e.g. `app.example.com` (web) and `api.example.com` (API) | Yes, in every browser. Recommended | `COOKIE_SAMESITE=lax` (default), `CORS_ORIGINS=https://app.example.com`, `FRONTEND_URL=https://app.example.com`, `VITE_API_URL=https://api.example.com` |
+| Default Railway names (`*.up.railway.app`) for both | **Partly.** These are different sites, so the cookie is "third-party": Safari and Firefox block it, and users there are signed out on every page reload (their access token still works for 15 minutes after login). Chrome allows it | `COOKIE_SAMESITE=none` (the app then requires HTTPS cookies) |
+| Web app proxies `/api` to the API (same origin) | Yes | Needs a proxy rule in `frontend/nginx.conf.template`, `COOKIE_PATH=/api/auth`, `VITE_API_URL=/api`. Not built yet |
+
+So for real users, attach a custom domain to both services (Railway: service →
+Settings → Networking → Custom Domain, then add the CNAME it shows at your DNS provider)
+before you rely on sessions. You are already adding DNS records for Resend, so this is the
+same place.
+
+`CORS_ORIGINS` must be the web app's exact origin (`https://…`, no path, no trailing
+slash): it controls both which pages may call the API and which `Origin` values
+`/auth/refresh` and `/auth/logout` accept.
 
 **Logs.** JSON, one object per line, each with a `request_id` that is also returned
 to the client in the `X-Request-ID` header and in error bodies. Search by it to follow

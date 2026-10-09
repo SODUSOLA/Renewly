@@ -1,11 +1,19 @@
 """HTTP endpoints for registration, login, the current user and password reset."""
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.database import get_db
+from app.core.config import get_settings
+from app.core.errors import error_response
 from app.core.rate_limit import RateLimiter
 from app.core.security import create_access_token
 from app.modules.auth import service
+from app.modules.auth.cookies import (
+    clear_refresh_cookie,
+    read_refresh_cookie,
+    require_trusted_origin,
+    set_refresh_cookie,
+)
 from app.modules.auth.dependencies import get_current_user
 from app.modules.auth.models import User
 from app.modules.auth.schemas import (
@@ -29,6 +37,7 @@ login_email_limit = RateLimiter("login-email", limit=10, window_seconds=900)
 forgot_ip_limit = RateLimiter("forgot-ip", limit=5, window_seconds=3600)
 forgot_email_limit = RateLimiter("forgot-email", limit=3, window_seconds=3600)
 reset_ip_limit = RateLimiter("reset-ip", limit=10, window_seconds=3600)
+refresh_ip_limit = RateLimiter("refresh-ip", limit=60, window_seconds=60)
 
 
 # func: create an account. Returns 409 if the email is already registered
@@ -52,12 +61,14 @@ def register(body: RegisterRequest, db: Session = Depends(get_db)) -> User:
         raise HTTPException(status.HTTP_409_CONFLICT, "Email already registered")
 
 
-# func: exchange email and password for a bearer token. Returns 401 on any failure
+# func to exchange email and password for an access token and a refresh cookie
 @router.post(
     "/login", response_model=TokenResponse, dependencies=[Depends(login_ip_limit)]
 )
-def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
-    """Exchange email and password for a bearer token.
+def login(
+    body: LoginRequest, response: Response, db: Session = Depends(get_db)
+) -> TokenResponse:
+    """Sign in: returns a short-lived access token and sets the HttpOnly refresh cookie.
 
     Returns 401 on any failure and 429 after too many attempts for the same email.
     """
@@ -70,7 +81,63 @@ def login(body: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
             "Incorrect email or password",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    return TokenResponse(access_token=create_access_token(user.id))
+    refresh_token, expires_at = service.start_session(db, user)
+    set_refresh_cookie(response, refresh_token, expires_at)
+    return _token_response(user)
+
+
+# func to build the access-token response body
+def _token_response(user: User) -> TokenResponse:
+    """A fresh access token for `user` and how many seconds it lasts."""
+    return TokenResponse(
+        access_token=create_access_token(user.id),
+        expires_in=get_settings().access_token_expire_minutes * 60,
+    )
+
+
+# func to trade the refresh cookie for a new access token
+@router.post(
+    "/refresh",
+    response_model=TokenResponse,
+    dependencies=[Depends(refresh_ip_limit), Depends(require_trusted_origin)],
+)
+def refresh(request: Request, response: Response, db: Session = Depends(get_db)):
+    """Exchange the refresh cookie for a new access token (and a rotated cookie).
+
+    Returns 401 (and deletes the cookie) if there is no valid refresh token. The web app
+    calls this on page load and whenever an access token expires.
+    """
+    raw_token = read_refresh_cookie(request)
+    try:
+        if raw_token is None:
+            raise service.InvalidRefreshToken
+        user, new_token, expires_at = service.rotate_session(db, raw_token)
+    except service.InvalidRefreshToken:
+        rejected = error_response(
+            status.HTTP_401_UNAUTHORIZED, "Not authenticated",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+        clear_refresh_cookie(rejected)
+        return rejected
+    if new_token is not None and expires_at is not None:
+        set_refresh_cookie(response, new_token, expires_at)
+    return _token_response(user)
+
+
+# func to log out of this device
+@router.post(
+    "/logout",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[Depends(require_trusted_origin)],
+)
+def logout(request: Request, db: Session = Depends(get_db)) -> Response:
+    """Revoke this login's refresh tokens and delete the cookie. Safe to call when signed out."""
+    raw_token = read_refresh_cookie(request)
+    if raw_token:
+        service.end_session(db, raw_token)
+    response = Response(status_code=status.HTTP_204_NO_CONTENT)
+    clear_refresh_cookie(response)
+    return response
 
 
 # func: return the profile of the authenticated user

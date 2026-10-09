@@ -83,3 +83,13 @@ def generate_reset_token() -> tuple[str, str]:
     """
     raw_token = secrets.token_urlsafe(32)
     return raw_token, hash_token(raw_token)
+
+
+# func to create a refresh token
+def generate_refresh_token() -> tuple[str, str]:
+    """Create a refresh token.
+
+    Returns `(raw_token, token_hash)`: put the raw token in the cookie, store only the hash.
+    """
+    raw_token = secrets.token_urlsafe(48)
+    return raw_token, hash_token(raw_token)

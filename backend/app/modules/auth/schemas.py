@@ -47,6 +47,8 @@ class TokenResponse(BaseModel):
 
     access_token: str
     token_type: str = "bearer"
+    # Seconds until the access token expires (the refresh token is in a cookie, not here).
+    expires_in: int
 
 
 # public view of a user. Never includes the hashed password

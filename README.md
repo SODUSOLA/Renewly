@@ -87,7 +87,8 @@ will actually touch:
 | `REDIS_URL` | `redis://localhost:6379/0` | Celery broker and rate-limit counters |
 | `CORS_ORIGINS` | `http://localhost:5173` | Web app origin(s) allowed to call the API |
 | `FRONTEND_URL` | empty | Used for the link in password-reset emails |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | How long a login lasts (see the note in [deployment.md](docs/deployment.md#sessions)) |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `15` | Access token lifetime; an `HttpOnly` refresh cookie (30 days sliding, 90 max) renews it silently |
+| `COOKIE_SAMESITE` | `lax` | Needs the web app and API on one site; see [deployment.md](docs/deployment.md#sessions-and-cookies) |
 | `APP_ENV` | `development` | `production` enforces a strong secret and a Resend key |
 | `RESEND_API_KEY` / `EMAIL_FROM` | empty | Empty key means "log emails, do not send" |
 

@@ -2,23 +2,28 @@
 
 Functions raise the domain errors below; the router turns them into HTTP responses.
 """
+import uuid
 from datetime import UTC, datetime, timedelta
 
-from sqlalchemy import select, update
+from sqlalchemy import delete, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
 from app.core.security import (
     DUMMY_PASSWORD_HASH,
+    generate_refresh_token,
     generate_reset_token,
     hash_password,
     hash_token,
     verify_password,
 )
-from app.modules.auth.models import PasswordResetToken, User
+from app.modules.auth.models import PasswordResetToken, RefreshToken, User
 
 RESET_TOKEN_TTL = timedelta(hours=1)
+# Two tabs can refresh at the same instant with the same cookie. A token rotated this
+# recently is treated as that race, not as theft.
+REFRESH_GRACE = timedelta(seconds=10)
 
 
 # raised when registering an email that already has an account
@@ -143,4 +148,141 @@ def reset_password(db: Session, *, raw_token: str, new_password: str) -> None:
         )
         .values(used_at=now)
     )
+    # A password change signs the account out everywhere.
+    revoke_all_sessions(db, user.id, now)
     db.commit()
+
+
+# ---------------------------------------------------------------- refresh sessions
+
+
+# raised when a refresh token is missing, unknown, expired, revoked or reused
+class InvalidRefreshToken(Exception):
+    """Raised when a refresh token cannot be used (the caller answers 401)."""
+
+
+# func to get the current time (one place to fake in tests)
+def _now() -> datetime:
+    """Return the current UTC time."""
+    return datetime.now(UTC)
+
+
+# func to create the next refresh token in a family
+def _issue_refresh_token(
+    db: Session, user_id: uuid.UUID, family_id: uuid.UUID, family_started_at: datetime, now: datetime
+) -> tuple[str, datetime]:
+    """Add a new refresh token row and return `(raw_token, expires_at)`.
+
+    The expiry slides forward by `refresh_token_expire_days` on every use but never
+    passes `refresh_token_max_days` after the login began.
+    """
+    settings = get_settings()
+    expires_at = min(
+        now + timedelta(days=settings.refresh_token_expire_days),
+        family_started_at + timedelta(days=settings.refresh_token_max_days),
+    )
+    raw_token, token_hash = generate_refresh_token()
+    db.add(
+        RefreshToken(
+            user_id=user_id,
+            family_id=family_id,
+            token_hash=token_hash,
+            family_started_at=family_started_at,
+            expires_at=expires_at,
+        )
+    )
+    return raw_token, expires_at
+
+
+# func to begin a login session
+def start_session(db: Session, user: User) -> tuple[str, datetime]:
+    """Start a new login for `user`; return `(raw_refresh_token, expires_at)` for the cookie."""
+    now = _now()
+    raw_token, expires_at = _issue_refresh_token(db, user.id, uuid.uuid4(), now, now)
+    db.commit()
+    return raw_token, expires_at
+
+
+# func to revoke every token of one login
+def revoke_family(db: Session, family_id: uuid.UUID, now: datetime) -> None:
+    """Mark every still-active token in the family revoked (does not commit)."""
+    db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.family_id == family_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+
+
+# func to revoke all of a user's logins
+def revoke_all_sessions(db: Session, user_id: uuid.UUID, now: datetime) -> None:
+    """Sign the user out everywhere by revoking every active refresh token (does not commit)."""
+    db.execute(
+        update(RefreshToken)
+        .where(RefreshToken.user_id == user_id, RefreshToken.revoked_at.is_(None))
+        .values(revoked_at=now)
+    )
+
+
+# func to swap a refresh token for a new one
+def rotate_session(db: Session, raw_token: str) -> tuple[User, str | None, datetime | None]:
+    """Use a refresh token; return `(user, new_raw_token, new_expires_at)`.
+
+    - Normal use: the old token is marked rotated and a new one is issued.
+    - Same token again within REFRESH_GRACE (two tabs racing): the user is returned
+      with `None, None`: the caller issues an access token but sets no new cookie,
+      because the winning request already did.
+    - Same token again after the grace period: it was copied, so the whole family is
+      revoked and InvalidRefreshToken is raised.
+    The token row is locked, so two simultaneous requests cannot both rotate it.
+    """
+    now = _now()
+    token = db.scalar(
+        select(RefreshToken)
+        .where(RefreshToken.token_hash == hash_token(raw_token))
+        .with_for_update()
+    )
+    if token is None or token.revoked_at is not None or token.expires_at <= now:
+        raise InvalidRefreshToken
+    user = db.get(User, token.user_id)
+    if user is None or not user.is_active:
+        revoke_family(db, token.family_id, now)
+        db.commit()
+        raise InvalidRefreshToken
+    if token.rotated_at is not None:
+        if now - token.rotated_at <= REFRESH_GRACE:
+            db.rollback()
+            return user, None, None
+        revoke_family(db, token.family_id, now)
+        db.commit()
+        raise InvalidRefreshToken
+    token.rotated_at = now
+    new_raw, expires_at = _issue_refresh_token(
+        db, user.id, token.family_id, token.family_started_at, now
+    )
+    db.commit()
+    return user, new_raw, expires_at
+
+
+# func to end the login that owns a refresh token
+def end_session(db: Session, raw_token: str) -> None:
+    """Log out: revoke the whole family of this token. Unknown tokens are ignored."""
+    token = db.scalar(
+        select(RefreshToken).where(RefreshToken.token_hash == hash_token(raw_token))
+    )
+    if token is not None:
+        revoke_family(db, token.family_id, _now())
+        db.commit()
+
+
+# func to delete old refresh tokens
+def purge_expired_refresh_tokens(db: Session) -> int:
+    """Delete tokens that expired more than a day ago; return how many.
+
+    Rotated and revoked tokens are kept until they expire, because reuse detection
+    needs to recognise them.
+    """
+    result = db.execute(
+        delete(RefreshToken).where(RefreshToken.expires_at < _now() - timedelta(days=1))
+    )
+    db.commit()
+    return result.rowcount

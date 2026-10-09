@@ -85,6 +85,34 @@ Consequences worth knowing:
 - If the system is down for a whole day, that day's reminders are missed rather than sent late in bulk. This is deliberate: it avoids a flood of stale emails after an outage.
 - Documents created inside an offset window (e.g. 20 days before expiry with a 30-day offset) do not get the missed offset; they get the next one.
 
+## Sessions
+
+Two tokens, because they answer different questions:
+
+| | Access token | Refresh token |
+|---|---|---|
+| Lives | 15 minutes | 30 days sliding, 90 days max |
+| Held in | Page memory | `HttpOnly` cookie (invisible to JavaScript) |
+| Sent to | Every API call, as `Authorization: Bearer` | Only `/auth/refresh` and `/auth/logout` (cookie `Path=/auth`) |
+| Server state | None (a signed JWT) | A hashed row in `refresh_tokens` |
+| If stolen | Useful for at most 15 minutes | Detected when used twice; revokes the login |
+
+```text
+page load ─▶ POST /auth/refresh (cookie) ─▶ access token in memory ─▶ GET /auth/me
+any call  ─▶ 401 (token expired) ─▶ POST /auth/refresh ─▶ retry the call once
+```
+
+Rotation detail: each refresh marks the presented row `rotated_at` and inserts a new row
+in the same `family_id`. A second use of a rotated row is theft, unless it arrives within
+10 seconds (two tabs refreshing together share one cookie jar), in which case the caller
+gets an access token and no new cookie. A daily Celery task deletes rows that expired more
+than a day ago; rotated and revoked rows are kept until then because detection needs them.
+
+**Hosting constraint.** A cookie is only dependable when the web app and the API are on the
+same *site* (e.g. `app.example.com` and `api.example.com`). The default `*.up.railway.app`
+names are different sites, which makes the refresh cookie a third-party cookie that Safari
+and Firefox block; see [deployment.md](deployment.md#sessions-and-cookies).
+
 ## Time handling
 
 - Timestamps are stored in UTC (`timestamptz`).
@@ -97,7 +125,8 @@ Consequences worth knowing:
 | Concern | Decision |
 |---|---|
 | Passwords | argon2; never stored or logged in plain text |
-| Login | JWT bearer tokens (HS256, short-lived); identical error for wrong email and wrong password; dummy hash on unknown email to equalise timing |
+| Login | Short-lived JWT access token (15 min, HS256) plus a rotating refresh token in an `HttpOnly`, `Secure`, `SameSite` cookie scoped to `/auth`; identical error for wrong email and wrong password; dummy hash on unknown email to equalise timing |
+| Sessions | Refresh tokens are stored hashed, grouped per login. Reuse of a rotated token revokes the whole login; logout and password reset revoke sessions; cookie-using endpoints check `Origin` (CSRF) |
 | Password reset | Random token, only its SHA-256 stored, 1 hour expiry, single use, spends all siblings; the request endpoint answers identically for unknown emails |
 | Data isolation | Every query filters by the current user; other people's rows return `404`, not `403` |
 | Abuse | Redis rate limits per IP and per email (hashed in keys); fails open if Redis is down |

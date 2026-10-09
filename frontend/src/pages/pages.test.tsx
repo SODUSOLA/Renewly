@@ -8,7 +8,11 @@ import { DashboardPage } from "./DashboardPage";
 import { LoginPage } from "./LoginPage";
 import { RegisterPage } from "./RegisterPage";
 import { RequireAuth } from "../auth/RequireAuth";
-import { makeDoc, mockApi, renderApp, USER } from "../test/utils";
+import { makeDoc, mockApi, renderApp, SIGNED_IN, SIGNED_OUT, USER } from "../test/utils";
+
+// Fake API for a visitor with no session / with a valid session cookie.
+const signedOut = (routes: Parameters<typeof mockApi>[0]) => mockApi({ ...SIGNED_OUT, ...routes });
+const signedIn = (routes: Parameters<typeof mockApi>[0]) => mockApi({ ...SIGNED_IN, ...routes });
 
 afterEach(() => vi.unstubAllGlobals());
 
@@ -18,7 +22,7 @@ function Where() {
 
 describe("LoginPage", () => {
   it("signs in, stores the token and goes to the dashboard", async () => {
-    mockApi({
+    signedOut({
       "POST /auth/login": ({ body }) => {
         expect(body).toEqual({ email: "ada@example.com", password: "correct-horse" });
         return { body: { access_token: "tok", token_type: "bearer" } };
@@ -40,7 +44,7 @@ describe("LoginPage", () => {
   });
 
   it("shows the server's message for wrong credentials and keeps the form", async () => {
-    mockApi({ "POST /auth/login": () => ({ status: 401, body: { detail: "Incorrect email or password", code: "unauthorized" } }) });
+    signedOut({ "POST /auth/login": () => ({ status: 401, body: { detail: "Incorrect email or password", code: "unauthorized" } }) });
     renderApp(<LoginPage />, "/login");
     await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "nope-nope");
@@ -51,7 +55,7 @@ describe("LoginPage", () => {
   });
 
   it("tells the user when they are rate limited", async () => {
-    mockApi({ "POST /auth/login": () => ({ status: 429, body: { detail: "Too many", code: "rate_limited" }, headers: { "Retry-After": "45" } }) });
+    signedOut({ "POST /auth/login": () => ({ status: 429, body: { detail: "Too many", code: "rate_limited" }, headers: { "Retry-After": "45" } }) });
     renderApp(<LoginPage />, "/login");
     await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "whatever1");
@@ -62,7 +66,7 @@ describe("LoginPage", () => {
 
 describe("RegisterPage", () => {
   it("explains a duplicate email next to the email field", async () => {
-    mockApi({ "POST /auth/register": () => ({ status: 409, body: { detail: "Email already registered", code: "conflict" } }) });
+    signedOut({ "POST /auth/register": () => ({ status: 409, body: { detail: "Email already registered", code: "conflict" } }) });
     renderApp(<RegisterPage />, "/register");
     await userEvent.type(screen.getByLabelText("Full name"), "Ada Obi");
     await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
@@ -72,55 +76,77 @@ describe("RegisterPage", () => {
   });
 
   it("checks the password length before calling the server", async () => {
-    const { fake } = mockApi({});
+    const { fake } = signedOut({});
     renderApp(<RegisterPage />, "/register");
+    await waitFor(() => expect(fake).toHaveBeenCalledTimes(1)); // only the first-load session check
     await userEvent.type(screen.getByLabelText("Full name"), "Ada Obi");
     await userEvent.type(screen.getByLabelText("Email"), "ada@example.com");
     await userEvent.type(screen.getByLabelText("Password"), "short");
     await userEvent.click(screen.getByRole("button", { name: "Create account" }));
     expect(await screen.findByText("Use at least 8 characters.")).toBeInTheDocument();
-    expect(fake).not.toHaveBeenCalled();
+    expect(fake).toHaveBeenCalledTimes(1); // still just the session check: nothing was submitted
   });
 });
 
 describe("RequireAuth", () => {
-  it("sends signed-out visitors to the login page", async () => {
-    mockApi({});
+  it("sends visitors without a session to the login page, quietly", async () => {
+    signedOut({});
     renderApp(
       <Routes>
-        <Route path="/login" element={<Where />} />
+        <Route path="/login" element={<LoginPage />} />
         <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<p>secret</p>} />
         </Route>
       </Routes>,
       "/dashboard",
     );
-    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/login"));
+    expect(await screen.findByRole("heading", { name: "Welcome back" })).toBeInTheDocument();
     expect(screen.queryByText("secret")).not.toBeInTheDocument();
+    expect(screen.queryByText(/session ended/i)).not.toBeInTheDocument();
   });
 
-  it("signs the user out when the stored token is rejected", async () => {
-    tokenStore.set("expired");
-    mockApi({ "GET /auth/me": () => ({ status: 401, body: { detail: "Not authenticated", code: "unauthorized" } }) });
+  it("restores the session on page load from the refresh cookie", async () => {
+    signedIn({});
     renderApp(
       <Routes>
-        <Route path="/login" element={<Where />} />
         <Route element={<RequireAuth />}>
           <Route path="/dashboard" element={<p>secret</p>} />
         </Route>
       </Routes>,
       "/dashboard",
     );
-    await waitFor(() => expect(screen.getByTestId("where")).toHaveTextContent("/login"));
+    expect(await screen.findByText("secret")).toBeInTheDocument();
+    expect(tokenStore.get()).toBe("tok");
+  });
+
+  it("explains it when a session ends while the user is signed in", async () => {
+    let refreshes = 0;
+    mockApi({
+      "POST /auth/refresh": () =>
+        ++refreshes === 1
+          ? { body: { access_token: "tok", token_type: "bearer", expires_in: 900 } }
+          : { status: 401, body: { detail: "Not authenticated", code: "unauthorized" } },
+      "GET /auth/me": () => ({ body: USER }),
+      "GET /vehicles": () => ({ status: 401, body: { detail: "Not authenticated", code: "unauthorized" } }),
+      "GET /dashboard": () => ({ status: 401, body: { detail: "Not authenticated", code: "unauthorized" } }),
+    });
+    renderApp(
+      <Routes>
+        <Route path="/login" element={<LoginPage />} />
+        <Route element={<RequireAuth />}>
+          <Route path="/dashboard" element={<DashboardPage />} />
+        </Route>
+      </Routes>,
+      "/dashboard",
+    );
+    expect(await screen.findByText(/your session ended/i)).toBeInTheDocument();
     expect(tokenStore.get()).toBeNull();
   });
 });
 
 describe("DashboardPage", () => {
   it("groups documents and shows counts, status labels and days left", async () => {
-    tokenStore.set("tok");
-    mockApi({
-      "GET /auth/me": () => ({ body: USER }),
+    signedIn({
       "GET /vehicles": () => ({ body: [] }),
       "GET /dashboard": () => ({
         body: {
@@ -143,9 +169,7 @@ describe("DashboardPage", () => {
   });
 
   it("invites the user to add a first document when there are none", async () => {
-    tokenStore.set("tok");
-    mockApi({
-      "GET /auth/me": () => ({ body: USER }),
+    signedIn({
       "GET /vehicles": () => ({ body: [] }),
       "GET /dashboard": () => ({ body: { today: "2026-10-08", counts: { expired: 0, expiring_soon: 0, valid: 0, total: 0 }, expired: [], expiring_soon: [], valid: [] } }),
     });
@@ -155,9 +179,7 @@ describe("DashboardPage", () => {
   });
 
   it("offers a retry when loading fails", async () => {
-    tokenStore.set("tok");
-    mockApi({
-      "GET /auth/me": () => ({ body: USER }),
+    signedIn({
       "GET /vehicles": () => ({ body: [] }),
       "GET /dashboard": () => ({ status: 500, body: { detail: "Internal server error", code: "internal_error", request_id: "abc" } }),
     });

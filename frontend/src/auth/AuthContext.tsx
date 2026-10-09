@@ -1,17 +1,17 @@
 import { useQueryClient } from "@tanstack/react-query";
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import { api, setUnauthorizedHandler, tokenStore } from "../api/client";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { api, refreshAccessToken, setUnauthorizedHandler, tokenStore } from "../api/client";
 import type { User } from "../api/types";
 
 interface AuthState {
   user: User | null;
-  // True until we know whether a stored token is still valid.
+  // True until we know whether the visitor already has a session.
   loading: boolean;
-  // Set when the server rejected our token, so the login page can explain why.
+  // Set when a session ended while the user was signed in, so the login page can say why.
   sessionExpired: boolean;
   login: (email: string, password: string) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
-  logout: () => void;
+  logout: () => Promise<void>;
 }
 
 export interface RegisterInput {
@@ -23,12 +23,17 @@ export interface RegisterInput {
 
 const AuthContext = createContext<AuthState | null>(null);
 
-// Keeps the signed-in user and token for the whole app.
+// Tabs tell each other about sign-outs so one click signs out everywhere on this device.
+const CHANNEL = "renewly-auth";
+
+// Keeps the signed-in user for the whole app. The access token is held in memory by the
+// API client; the long-lived refresh token is an HttpOnly cookie this code never sees.
 export function AuthProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [user, setUser] = useState<User | null>(null);
-  const [loading, setLoading] = useState<boolean>(() => tokenStore.get() !== null);
+  const [loading, setLoading] = useState(true);
   const [sessionExpired, setSessionExpired] = useState(false);
+  const channel = useRef<BroadcastChannel | null>(null);
 
   const signOut = useCallback(() => {
     tokenStore.clear();
@@ -37,7 +42,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     queryClient.clear();
   }, [queryClient]);
 
-  // Any 401 on a signed-in request means the token expired or was revoked.
+  // The API client calls this when a session can no longer be renewed.
   useEffect(() => {
     setUnauthorizedHandler(() => {
       signOut();
@@ -46,20 +51,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => setUnauthorizedHandler(null);
   }, [signOut]);
 
-  // On first load, trade a stored token for the user's profile.
+  // Another tab signed out.
   useEffect(() => {
-    if (!tokenStore.get()) return;
+    if (typeof BroadcastChannel === "undefined") return;
+    const bc = new BroadcastChannel(CHANNEL);
+    channel.current = bc;
+    bc.onmessage = (event) => {
+      if (event.data === "logout") signOut();
+    };
+    return () => {
+      bc.close();
+      channel.current = null;
+    };
+  }, [signOut]);
+
+  // On first load, ask for a session: if the browser holds a valid refresh cookie we get
+  // an access token and the profile; otherwise the visitor is simply signed out (no banner).
+  useEffect(() => {
     let cancelled = false;
-    api<User>("/auth/me")
-      .then((me) => {
-        if (!cancelled) setUser(me);
-      })
-      .catch(() => {
-        // A 401 is handled by the global handler; other failures just mean "not signed in".
-      })
-      .finally(() => {
+    (async () => {
+      try {
+        if (await refreshAccessToken()) {
+          const me = await api<User>("/auth/me");
+          if (!cancelled) setUser(me);
+        }
+      } catch {
+        // Network or server trouble: show the sign-in page; signing in will report it.
+      } finally {
         if (!cancelled) setLoading(false);
-      });
+      }
+    })();
     return () => {
       cancelled = true;
     };
@@ -84,9 +105,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [login],
   );
 
+  const logout = useCallback(async () => {
+    try {
+      // Revokes the session on the server and deletes the cookie.
+      await api<void>("/auth/logout", { method: "POST", public: true });
+    } catch {
+      // Even if the server can't be reached, sign out locally.
+    }
+    signOut();
+    channel.current?.postMessage("logout");
+  }, [signOut]);
+
   const value = useMemo(
-    () => ({ user, loading, sessionExpired, login, register, logout: signOut }),
-    [user, loading, sessionExpired, login, register, signOut],
+    () => ({ user, loading, sessionExpired, login, register, logout }),
+    [user, loading, sessionExpired, login, register, logout],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

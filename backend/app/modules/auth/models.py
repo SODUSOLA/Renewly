@@ -65,3 +65,34 @@ class PasswordResetToken(UUIDPrimaryKeyMixin, Base):
     )
 
     user: Mapped["User"] = relationship(back_populates="reset_tokens")
+
+
+# class for a long-lived login that can be exchanged for new access tokens
+class RefreshToken(UUIDPrimaryKeyMixin, Base):
+    """One link in a login's chain of refresh tokens.
+
+    Each use of a token ("rotation") marks it `rotated_at` and issues a new one in the
+    same `family_id`. Presenting an already-rotated token again means a copy was stolen,
+    so the whole family is revoked. Only the SHA-256 of the cookie value is stored.
+    """
+
+    __tablename__ = "refresh_tokens"
+
+    user_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), index=True
+    )
+    # All tokens descended from one login share a family.
+    family_id: Mapped[uuid.UUID] = mapped_column(Uuid, index=True)
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    # When the login began; caps the family's total lifetime.
+    family_started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), index=True)
+    rotated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    revoked_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now()
+    )

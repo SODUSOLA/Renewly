@@ -3,31 +3,19 @@
 
 export const API_URL: string = (import.meta.env.VITE_API_URL ?? "http://localhost:8000").replace(/\/$/, "");
 
-const TOKEN_KEY = "renewly.token";
+let accessToken: string | null = null;
 
-// The token lives in localStorage so a refresh keeps you signed in. Every access
-// is wrapped because storage can be blocked (private windows, strict settings).
+// The short-lived access token lives only in memory: a script injected into the page
+// cannot find it in storage, and a reload simply gets a new one via the refresh cookie.
 export const tokenStore = {
   get(): string | null {
-    try {
-      return localStorage.getItem(TOKEN_KEY);
-    } catch {
-      return null;
-    }
+    return accessToken;
   },
   set(token: string): void {
-    try {
-      localStorage.setItem(TOKEN_KEY, token);
-    } catch {
-      /* stay signed in for this tab only */
-    }
+    accessToken = token;
   },
   clear(): void {
-    try {
-      localStorage.removeItem(TOKEN_KEY);
-    } catch {
-      /* nothing to clear */
-    }
+    accessToken = null;
   },
 };
 
@@ -97,8 +85,8 @@ function formatWait(seconds: number): string {
 
 let onUnauthorized: (() => void) | null = null;
 
-// The auth provider registers a callback here so any 401 on a signed-in request
-// signs the user out and returns them to the login page.
+// The auth provider registers a callback here so that when a session can no longer be
+// renewed, the user is signed out and sent back to the login page.
 export function setUnauthorizedHandler(handler: (() => void) | null): void {
   onUnauthorized = handler;
 }
@@ -107,12 +95,13 @@ interface RequestOptions {
   method?: "GET" | "POST" | "PATCH" | "DELETE";
   body?: unknown;
   query?: Record<string, string | undefined | null>;
-  // Endpoints like login/register must not trigger the "session expired" flow.
+  // Endpoints like login/register must not send the token or trigger the refresh flow.
   public?: boolean;
 }
 
-// Calls the API and returns the parsed JSON (undefined for 204). Throws ApiError.
-export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+// One HTTP call. `credentials: "include"` makes the browser send and store the
+// HttpOnly refresh cookie (needed by login, refresh and logout).
+async function request<T>(path: string, options: RequestOptions): Promise<T> {
   const url = new URL(API_URL + path);
   for (const [key, value] of Object.entries(options.query ?? {})) {
     if (value) url.searchParams.set(key, value);
@@ -128,6 +117,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
       method: options.method ?? "GET",
       headers,
       body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+      credentials: "include",
     });
   } catch {
     throw new ApiError({ status: 0, message: "Network error", code: "network_error" });
@@ -154,7 +144,7 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
         : `Request failed (${response.status})`;
   const retry = Number(response.headers.get("Retry-After"));
 
-  const error = new ApiError({
+  throw new ApiError({
     status: response.status,
     message,
     code: body.code,
@@ -162,6 +152,55 @@ export async function api<T>(path: string, options: RequestOptions = {}): Promis
     retryAfter: Number.isFinite(retry) && retry > 0 ? retry : null,
     problems,
   });
-  if (response.status === 401 && !options.public) onUnauthorized?.();
-  throw error;
+}
+
+let refreshInFlight: Promise<string | null> | null = null;
+
+// Trades the refresh cookie for a new access token and keeps it in memory.
+// Returns the token, or null if the server says there is no valid session (a normal
+// outcome for a signed-out visitor). Throws on network or server trouble, so a flaky
+// connection never looks like "you were signed out". Concurrent callers (several
+// requests failing at once, React StrictMode) share one call, because each refresh
+// rotates the cookie and a second parallel one would race with the first.
+export function refreshAccessToken(): Promise<string | null> {
+  refreshInFlight ??= (async () => {
+    try {
+      const result = await request<{ access_token: string }>("/auth/refresh", { method: "POST", public: true });
+      tokenStore.set(result.access_token);
+      return result.access_token;
+    } catch (error) {
+      if (error instanceof ApiError && (error.status === 401 || error.status === 403)) {
+        tokenStore.clear();
+        return null;
+      }
+      throw error;
+    } finally {
+      refreshInFlight = null;
+    }
+  })();
+  return refreshInFlight;
+}
+
+const isUnauthorized = (error: unknown): boolean => error instanceof ApiError && error.status === 401;
+
+// Calls the API and returns the parsed JSON (undefined for 204). Throws ApiError.
+// If a signed-in request gets a 401 (the 15-minute access token ran out), it silently
+// refreshes once and retries; only when that fails is the user signed out.
+export async function api<T>(path: string, options: RequestOptions = {}): Promise<T> {
+  try {
+    return await request<T>(path, options);
+  } catch (error) {
+    if (!isUnauthorized(error) || options.public) throw error;
+    const fresh = await refreshAccessToken();
+    if (!fresh) {
+      onUnauthorized?.();
+      throw error;
+    }
+    try {
+      return await request<T>(path, options);
+    } catch (retryError) {
+      if (isUnauthorized(retryError)) onUnauthorized?.();
+      throw retryError;
+    }
+  }
 }
