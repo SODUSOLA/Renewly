@@ -5,6 +5,9 @@ All request and response bodies are JSON.
 
 ## Conventions
 
+**Browsers.** Calls from a web page are only accepted from the origins in the server's `CORS_ORIGINS`.
+The `X-Request-ID` and `Retry-After` response headers are readable by the page.
+
 **Authentication.** Log in to get a token and send it on every protected request:
 
 ```text
@@ -87,7 +90,7 @@ Returns the logged-in user (same shape as register).
 ```
 Always answers `{"message": "If that email is registered, a reset link has been sent."}`,
 whether or not the account exists, so it cannot be used to find registered emails.
-The email contains a one-time token valid for 1 hour.
+The email contains a link to the web app's reset page (or the bare token when `FRONTEND_URL` is not configured), valid for 1 hour.
 
 ### `POST /auth/reset-password` → 200
 ```json
@@ -152,15 +155,25 @@ largest first. `[]` turns reminders off for that document.
 | `GET /documents/{id}/renewals` | Renewal history, newest first |
 
 ```json
-{ "type": "insurance", "title": "Car insurance", "vehicle_id": "…",
-  "issue_date": "2026-03-01", "expiry_date": "2027-03-01", "reminder_offsets": [30, 7, 1] }
+{ 
+  "type": "insurance", 
+  "title": "Car insurance", 
+  "vehicle_id": "…",
+  "issue_date": "2026-03-01", 
+  "expiry_date": "2027-03-01",
+  "reminder_offsets": [30, 7, 1] 
+}
 ```
 `422` when: `custom` has no label, expiry is before issue, `vehicle_id` is not one of
 your vehicles, or an offset is out of range.
 
 ### `POST /documents/{id}/renew`
 ```json
-{ "new_expiry": "2028-03-01", "cost": "15000.50", "notes": "Annual premium" }
+{ 
+  "new_expiry": "2028-03-01", 
+  "cost": "15000.50",
+  "notes": "Annual premium" 
+}
 ```
 `cost` and `notes` are optional. `new_expiry` must be **later** than the current expiry
 (`422` otherwise, and nothing is recorded). On success the expiry moves forward, a
@@ -175,7 +188,12 @@ same reminder offsets apply again for the new date. Returns the updated document
 ```json
 {
   "today": "2026-10-08",
-  "counts": { "expired": 1, "expiring_soon": 2, "valid": 5, "total": 8 },
+  "counts": 
+      { "expired": 1, 
+        "expiring_soon": 2, 
+        "valid": 5, 
+        "total": 8 
+      },
   "expired": [ /* documents */ ],
   "expiring_soon": [ /* documents */ ],
   "valid": [ /* documents */ ]

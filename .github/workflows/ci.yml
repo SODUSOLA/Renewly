@@ -8,6 +8,9 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
     services:
       postgres:
         image: postgres:16-alpine
@@ -35,7 +38,7 @@ jobs:
         with:
           python-version: "3.14"
           cache: pip
-          cache-dependency-path: requirements-dev.txt
+          cache-dependency-path: backend/requirements-dev.txt
       - run: pip install -r requirements-dev.txt
       # The migrations must build the schema from scratch and match the models.
       - name: Migrations apply and match the models
@@ -51,6 +54,30 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: The production image builds
-        run: docker build -t expiry-tracker .
+        run: docker build -t expiry-tracker backend
       - name: The image starts and can use every model
         run: docker run --rm -e DATABASE_URL=postgresql://x:x@localhost/x -e SECRET_KEY=x expiry-tracker python -c "import app.main; from sqlalchemy.orm import configure_mappers; configure_mappers(); print('ok')"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci
+      - name: Type check
+        run: npm run typecheck
+      - name: Tests
+        run: npm test
+      - name: Production build
+        run: npm run build
+        env:
+          VITE_API_URL: https://api.example.com
+      - name: The production image builds
+        run: docker build --build-arg VITE_API_URL=https://api.example.com -t renewly-web .

@@ -1,57 +1,49 @@
-# Expiry Tracker
+# Renewly
 
 Track the documents that expire in your life (driver's license, car insurance,
 vehicle registration, permits, anything custom) and get an email **before** they
-lapse. Built with FastAPI, PostgreSQL, Celery and Resend.
+lapse.
 
-- Reminders go out at configurable offsets (default 90, 30, 14, 7 and 1 days before expiry), at 08:00 **in each user's own timezone**.
+- Reminders go out at configurable offsets (default 90, 30, 14, 7 and 1 days before expiry), at 8am **in each user's own timezone**.
 - Each reminder is sent **exactly once**, even if the job runs many times or two workers collide.
 - A dashboard groups documents as **expired / expiring soon / valid** with days left.
 - "Mark as renewed" moves the expiry forward, keeps a renewal history and re-arms the reminders.
 
-## Run it in 10 minutes
+| Part | Folder | Stack |
+|---|---|---|
+| API and reminder engine | [`backend/`](backend) | FastAPI, PostgreSQL, Celery, Redis, Resend |
+| Web app | [`frontend/`](frontend) | React, TypeScript, Vite |
 
-You need Python 3.11 or newer (developed on 3.14) and Docker.
+## Run it locally (about 10 minutes)
+
+You need Python 3.11 or newer (developed on 3.14), Node 22 and Docker.
 
 ```bash
-# 1. Install
+# 1. Start PostgreSQL and Redis
+docker compose up -d
+
+# 2. Backend: install, configure, create the tables, start the API
+cd backend
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements-dev.txt
-
-# 2. Configure (the defaults work for local development, except SECRET_KEY)
-cp .env.example .env
-# edit .env and set SECRET_KEY to a random string:
-python -c "import secrets; print(secrets.token_urlsafe(48))"
-
-# 3. Start PostgreSQL and Redis, then create the tables
-docker compose up -d
+cp .env.example .env          # then set SECRET_KEY to a random string:
+                              #   python -c "import secrets; print(secrets.token_urlsafe(48))"
 alembic upgrade head
-
-# 4. Start the API
 uvicorn app.main:app --reload
 ```
 
-Open <http://localhost:8000/docs> for the interactive API explorer.
-
-### Try it
+In a second terminal, the web app:
 
 ```bash
-# Create an account
-curl -s localhost:8000/auth/register -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","password":"correct-horse","full_name":"You"}'
-
-# Log in and keep the token
-TOKEN=$(curl -s localhost:8000/auth/login -H 'content-type: application/json' \
-  -d '{"email":"you@example.com","password":"correct-horse"}' | python -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-
-# Track a document (use a real future date)
-curl -s localhost:8000/documents -H "authorization: Bearer $TOKEN" -H 'content-type: application/json' \
-  -d '{"type":"insurance","title":"Car insurance","expiry_date":"2027-03-01"}'
-
-# See the dashboard
-curl -s localhost:8000/dashboard -H "authorization: Bearer $TOKEN"
+cd frontend
+npm install
+cp .env.example .env          # VITE_API_URL=http://localhost:8000
+npm run dev
 ```
+
+Open <http://localhost:5173>, create an account, and add a document. The API's own
+interactive docs are at <http://localhost:8000/docs>.
 
 ### Send reminders
 
@@ -59,74 +51,70 @@ Reminders are sent by a Celery worker with a scheduler (Beat) that runs the job
 every hour. In another terminal:
 
 ```bash
+cd backend && source .venv/bin/activate
 celery -A app.core.celery_app worker --beat --loglevel=info
 ```
 
 With no `RESEND_API_KEY` set, emails are **printed to the log instead of sent**,
-which is the right behaviour for development. To send real email:
-
-1. Create an API key at <https://resend.com>.
-2. Put it in `.env` as `RESEND_API_KEY`.
-3. For first tests, keep `EMAIL_FROM=Expiry Tracker <onboarding@resend.dev>` (it only delivers to your own Resend account email). For real users, verify your domain in Resend (SPF/DKIM) and set `EMAIL_FROM` to an address on it.
-
-To trigger the job right now instead of waiting for the hour:
+which is the right behaviour for development. To send real email, see
+[docs/deployment.md](docs/deployment.md#5-make-email-actually-reach-people). To run the
+job right now instead of waiting for the hour:
 
 ```bash
 python -c "from app.modules.reminders.tasks import send_due_reminders; print(send_due_reminders())"
 ```
 
+## Tests
+
+```bash
+cd backend  && pytest --cov     # needs `docker compose up -d`; fails below 95% coverage
+cd frontend && npm test         # plus: npm run typecheck
+```
+
+Backend tests run against a separate `expiry_tracker_test` database on the same
+PostgreSQL server (created automatically; your development data is never touched).
+
 ## Configuration
 
-All settings come from environment variables or `.env`. See [`.env.example`](.env.example) for the annotated list.
+Backend settings come from environment variables or `backend/.env`; see
+[`backend/.env.example`](backend/.env.example) for the annotated list. The ones you
+will actually touch:
 
 | Variable | Default | Purpose |
 |---|---|---|
 | `DATABASE_URL` | required | PostgreSQL connection string |
 | `SECRET_KEY` | required | Signs login tokens (32+ characters in production) |
 | `REDIS_URL` | `redis://localhost:6379/0` | Celery broker and rate-limit counters |
-| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | Login token lifetime |
-| `DEFAULT_TIMEZONE` | `Africa/Lagos` | Timezone for users who do not pick one |
+| `CORS_ORIGINS` | `http://localhost:5173` | Web app origin(s) allowed to call the API |
+| `FRONTEND_URL` | empty | Used for the link in password-reset emails |
+| `ACCESS_TOKEN_EXPIRE_MINUTES` | `30` | How long a login lasts (see the note in [deployment.md](docs/deployment.md#sessions)) |
 | `APP_ENV` | `development` | `production` enforces a strong secret and a Resend key |
-| `RESEND_API_KEY` | empty | Empty means "log emails, do not send" |
-| `EMAIL_FROM` | `Expiry Tracker <onboarding@resend.dev>` | Sender address |
-| `LOG_FORMAT` / `LOG_LEVEL` | `text` / `INFO` | Use `json` in production |
-| `RATE_LIMIT_BACKEND` | `redis` | `memory` for a single process |
-| `SENTRY_DSN` | empty | Empty disables error tracking |
+| `RESEND_API_KEY` / `EMAIL_FROM` | empty | Empty key means "log emails, do not send" |
 
-## Tests
-
-```bash
-pytest --cov
-```
-
-Tests run against a separate `expiry_tracker_test` database on the same
-PostgreSQL server (created automatically; your development data is never
-touched) and need the `docker compose` services running. The suite fails if
-coverage drops below 95%.
+The frontend has one setting, `VITE_API_URL` (the API's address), which is baked in at build time.
 
 ## Project layout
 
 ```text
-app/
-  main.py                 FastAPI app: routers, middleware, health checks
-  core/                   config, database, security, rate limiting, logging, errors, Celery
-  common/                 enums and date helpers shared across modules
-  modules/
-    auth/                 register, login, /me, password reset
-    vehicles/             vehicle CRUD
-    documents/            document CRUD, soft delete, renewal
-    dashboard/            documents grouped by status
-    reminders/            the reminder engine and its Celery task
-    notifications/        email sending (Resend) and email templates
-alembic/                  database migrations
-Dockerfile, railway*.json one image, three processes (see docs/deployment.md)
-.github/workflows/        CI: migrations, tests, Docker build
-tests/                    pytest suite
-docs/                     architecture.md, api.md
+backend/
+  app/
+    main.py               FastAPI app: routers, CORS, middleware, health checks
+    core/                 config, database, security, rate limiting, logging, errors, Celery
+    common/               enums and date helpers
+    modules/              auth, vehicles, documents, dashboard, reminders, notifications
+                          (each: models.py, schemas.py, service.py, router.py)
+  alembic/                database migrations
+  tests/                  pytest suite
+frontend/
+  src/
+    api/                  fetch client, types, React Query hooks
+    auth/                 sign-in state and route protection
+    pages/                one file per screen
+    components/           shared UI (forms, modal, badges...)
+    lib/                  small pure helpers (dates, offsets)
+docs/                     api.md, architecture.md, deployment.md
+.github/workflows/        CI: backend, frontend and both Docker images
 ```
-
-Each module follows the same shape: `models.py` (tables) → `schemas.py`
-(request/response shapes) → `service.py` (business rules) → `router.py` (HTTP).
 
 ## More documentation
 
@@ -139,7 +127,7 @@ Each module follows the same shape: `models.py` (tables) → `schemas.py`
 | Symptom | Fix |
 |---|---|
 | `connection refused` on port 5432 or 6379 | Start the services: `docker compose up -d` (Docker Desktop must be running) |
-| `ValidationError ... secret_key` on startup | Create `.env` (`cp .env.example .env`) and set `SECRET_KEY` |
+| `ValidationError ... secret_key` on backend start | Create `backend/.env` (`cp .env.example .env`) and set `SECRET_KEY` |
+| The web app shows "Can't reach the server" | Is the API running on the address in `VITE_API_URL`? In the browser console, a CORS error means the web app's address isn't in `CORS_ORIGINS` |
 | `429 Too many requests` | A rate limit was hit; wait for `Retry-After` seconds. Limits are listed in [docs/api.md](docs/api.md) |
 | No emails arrive | Without `RESEND_API_KEY` emails are only logged. With a key, check the worker log for `Resend rejected the email` (usually an unverified sender domain) |
-| Tests fail to connect | The test database is created on the same server as `DATABASE_URL`; make sure PostgreSQL is up |
