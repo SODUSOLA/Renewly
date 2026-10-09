@@ -18,6 +18,7 @@ from app.core.observability import init_sentry
 from app.modules.auth.router import router as auth_router
 from app.modules.dashboard.router import router as dashboard_router
 from app.modules.documents.router import router as documents_router
+from app.modules.onboarding.router import router as onboarding_router
 from app.modules.reports.router import router as reports_router
 from app.modules.vehicles.router import router as vehicles_router
 
@@ -48,6 +49,7 @@ app.include_router(vehicles_router)
 app.include_router(documents_router)
 app.include_router(dashboard_router)
 app.include_router(reports_router)
+app.include_router(onboarding_router)
 
 
 # func to report that the process is alive

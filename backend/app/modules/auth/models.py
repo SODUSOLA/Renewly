@@ -1,7 +1,8 @@
 import uuid
 from datetime import datetime
 from typing import TYPE_CHECKING
-from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Uuid, func, true
+from sqlalchemy import Boolean, DateTime, Enum, ForeignKey, String, Uuid, func, text, true
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.common.enums import ReminderStyle, enum_values
 from app.core.base import Base, TimestampMixin, UUIDPrimaryKeyMixin
@@ -29,6 +30,10 @@ class User(UUIDPrimaryKeyMixin, TimestampMixin, Base):
     )
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default=true()
+    )
+    # What the user has seen/done in the getting-started journey (keys: see OnboardingUpdate).
+    onboarding: Mapped[dict[str, bool]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     # Whether to send the six-monthly spending report (opt-out; reminders are separate).
     report_emails: Mapped[bool] = mapped_column(

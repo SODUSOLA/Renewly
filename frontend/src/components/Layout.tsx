@@ -17,13 +17,19 @@ export function Layout() {
           </NavLink>
           <nav aria-label="Main" className="nav">
             <NavLink to="/dashboard">Dashboard</NavLink>
-            <NavLink to="/documents">Documents</NavLink>
-            <NavLink to="/vehicles">Vehicles</NavLink>
-            <NavLink to="/reports">Reports</NavLink>
+            <NavLink to="/documents" data-tour="nav-documents">
+              Documents
+            </NavLink>
+            <NavLink to="/vehicles" data-tour="nav-vehicles">
+              Vehicles
+            </NavLink>
+            <NavLink to="/reports" data-tour="nav-reports">
+              Reports
+            </NavLink>
           </nav>
           <div className="account">
             <span className="muted small account-name">{user?.full_name}</span>
-            <NavLink to="/settings" className="account-link">
+            <NavLink to="/settings" className="account-link" data-tour="nav-settings">
               Settings
             </NavLink>
             <button type="button" className="btn btn-ghost btn-sm" onClick={logout}>

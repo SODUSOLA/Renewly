@@ -20,6 +20,7 @@ from app.modules.auth.schemas import (
     ForgotPasswordRequest,
     LoginRequest,
     MessageResponse,
+    OnboardingUpdate,
     ProfileUpdate,
     RegisterRequest,
     ResetPasswordRequest,
@@ -165,6 +166,17 @@ def update_me(
 ) -> User:
     """Change name, timezone or reminder style (`each` or `digest`). Only fields sent change."""
     return service.update_profile(db, current_user, body)
+
+
+# func to record progress through the getting-started journey
+@router.patch("/me/onboarding", response_model=UserRead)
+def update_my_onboarding(
+    body: OnboardingUpdate,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+) -> User:
+    """Remember what the user has seen or done in the getting-started journey (flags only)."""
+    return service.update_onboarding(db, current_user, body)
 
 
 # func: email a reset link if the account exists

@@ -1,10 +1,16 @@
-import { Link } from "react-router-dom";
+import { useEffect, useState } from "react";
+import { Link, useSearchParams } from "react-router-dom";
 import type { Doc, DocumentStatus } from "../api/types";
-import { useDashboard, useVehicles } from "../api/queries";
+import { useDashboard, useOnboardingProgress, useVehicles } from "../api/queries";
 import { useAuth } from "../auth/AuthContext";
 import { DocumentRow } from "../components/DocumentRow";
 import { ErrorNotice } from "../components/ErrorNotice";
+import { GettingStarted } from "../components/GettingStarted";
+import { QuickAdd } from "../components/QuickAdd";
+import { APP_TOUR, Tour } from "../components/Tour";
+import { WelcomeDialog } from "../components/WelcomeDialog";
 import { Spinner } from "../components/Spinner";
+import { buildChecklist, shouldShowChecklist, shouldShowWelcome } from "../lib/onboarding";
 import { STATUS_META } from "../lib/status";
 
 const SECTIONS: { key: DocumentStatus; empty: string }[] = [
@@ -15,17 +21,65 @@ const SECTIONS: { key: DocumentStatus; empty: string }[] = [
 
 // The home screen: how many documents are in each state, and the documents themselves.
 export function DashboardPage() {
-  const { user } = useAuth();
+  const { user, updateOnboarding } = useAuth();
   const dashboard = useDashboard();
   const vehicles = useVehicles();
+  const progress = useOnboardingProgress();
+  const [params, setParams] = useSearchParams();
+  const [tourOpen, setTourOpen] = useState(false);
+  // Hide the welcome the moment it is answered, without waiting for the server to confirm.
+  const [welcomeAnswered, setWelcomeAnswered] = useState(false);
+
+  // "Take the tour again" (from Settings) arrives as /dashboard?tour=1.
+  const wantsTour = params.get("tour") === "1";
+  useEffect(() => {
+    // Wait for the page to be fully laid out (checklist included) so the tour points at the right place.
+    if (wantsTour && dashboard.data && progress.data) {
+      setTourOpen(true);
+      const next = new URLSearchParams(params);
+      next.delete("tour");
+      setParams(next, { replace: true });
+    }
+  }, [wantsTour, dashboard.data, progress.data]);
 
   if (dashboard.isPending) return <Spinner label="Loading your dashboard" />;
   if (dashboard.isError) return <ErrorNotice error={dashboard.error} onRetry={() => dashboard.refetch()} />;
 
   const data = dashboard.data;
   const firstName = user?.full_name.split(" ")[0];
+  const onboarding = user?.onboarding ?? {};
+  const summary = progress.data ? buildChecklist(progress.data, onboarding) : null;
+
+  // Remember that the welcome/tour has been dealt with so it is never shown again.
+  function markTourDone() {
+    if (onboarding.tour_done !== true) updateOnboarding({ tour_done: true }).catch(() => undefined);
+  }
+
   return (
     <>
+      {progress.data && !welcomeAnswered && !tourOpen && shouldShowWelcome(progress.data, onboarding) && (
+        <WelcomeDialog
+          firstName={firstName}
+          onTour={() => {
+            setWelcomeAnswered(true);
+            markTourDone();
+            setTourOpen(true);
+          }}
+          onSkip={() => {
+            setWelcomeAnswered(true);
+            markTourDone();
+          }}
+        />
+      )}
+      {tourOpen && (
+        <Tour
+          steps={APP_TOUR}
+          onClose={() => {
+            setTourOpen(false);
+            markTourDone();
+          }}
+        />
+      )}
       <div className="page-head">
         <div>
           <h1>Hi{firstName ? `, ${firstName}` : ""}</h1>
@@ -35,12 +89,20 @@ export function DashboardPage() {
               : needsAttention(data.counts)}
           </p>
         </div>
-        <Link className="btn btn-primary" to="/documents?new=1">
+        <Link className="btn btn-primary" to="/documents?new=1" data-tour="add-document">
           + Add document
         </Link>
       </div>
 
-      <section aria-label="Summary" className="stat-grid">
+      {summary && shouldShowChecklist(summary, onboarding) && (
+        <GettingStarted
+          summary={summary}
+          onTour={() => setTourOpen(true)}
+          onDismiss={() => updateOnboarding({ checklist_dismissed: true }).catch(() => undefined)}
+        />
+      )}
+
+      <section aria-label="Summary" className="stat-grid" data-tour="summary">
         {SECTIONS.map(({ key }) => (
           <Link key={key} to={`/documents?status=${key}`} className={`stat stat-${key}`}>
             <span className="stat-number">{data.counts[key]}</span>
@@ -54,10 +116,9 @@ export function DashboardPage() {
       {data.counts.total === 0 ? (
         <div className="empty">
           <h2>No documents yet</h2>
-          <p className="muted">Driver's license, insurance, registration, permits: add anything that expires.</p>
-          <Link className="btn btn-primary" to="/documents?new=1">
-            Add your first document
-          </Link>
+          <p className="muted">Driver's licence, insurance, registration, permits: add anything that expires.</p>
+          <QuickAdd />
+          <p className="muted small">Or <Link to="/documents?new=1">start with a blank form</Link>.</p>
         </div>
       ) : (
         SECTIONS.map(({ key, empty }) => {

@@ -61,6 +61,28 @@ are. Users with `report_emails` off, inactive users, and accounts with nothing t
 (the last are recorded as `skipped` so they aren't re-evaluated every hour). The "coming up" list estimates each cost
 from the document's last recorded renewal cost and says it is an estimate.
 
+## The web app
+
+`frontend/` is a single-page React app (Vite, TypeScript) that talks to the API over HTTPS. There is no
+server-side rendering; the built files are static, and nginx (or Vercel) serves them with a fallback to
+`index.html` so deep links work.
+
+| Piece | Choice | Why |
+|---|---|---|
+| Server data | TanStack Query | Caching, loading and error states, and invalidation after changes (renewing a document refreshes the dashboard, reports and checklist) |
+| Routing | React Router; signed-in pages under one `RequireAuth` guard | Signed-out visitors are sent to sign-in and returned to where they were headed |
+| Auth | Access token in memory, refresh token in an `HttpOnly` cookie (see Sessions) | Nothing an injected script could steal is in storage; a reload or an expired token heals silently |
+| API access | One `fetch` wrapper (`src/api/client.ts`) | Adds the token, parses the uniform error shape, exposes field errors and `Retry-After`, refreshes once on a 401 |
+| Dates | Plain `YYYY-MM-DD` strings, never `Date` objects | A `Date` built from a bare date shifts by a day in some timezones |
+| Reminder days | A calendar (`lib/calendar.ts`) converting dates to "days before expiry" | The server stores offsets; the calendar only changes how they are entered |
+| Styling | One CSS file with design tokens, automatic dark mode | No UI-kit dependency; fits a 375px phone |
+
+**First-run journey.** The welcome dialog, spotlight tour, checklist and quick-start chips are described in
+[ux-journey.md](ux-journey.md). Two small backend pieces support them: `users.onboarding` (yes/no flags remembered
+per user, so the journey follows them between devices) and `GET /onboarding/progress` (counts of documents,
+vehicles and renewals). The checklist is computed from those counts rather than stored, so it cannot disagree
+with the account.
+
 ## Layers
 
 Every feature lives in `app/modules/<name>/` and is split the same way, so you

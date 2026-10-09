@@ -46,6 +46,11 @@ export function RegisterPage() {
   const banner = Object.keys(errors).length ? null : error;
   return (
     <AuthCard title="Create your account" subtitle="Track your documents and get reminded in time.">
+      <ul className="value-props">
+        <li>Email reminders before your licence, insurance and permits expire</li>
+        <li>Pick your own reminder days on a calendar</li>
+        <li>See what you spend on renewals</li>
+      </ul>
       <form onSubmit={submit} noValidate>
         <ErrorNotice error={banner} />
         <Field label="Full name" error={errors.full_name}>

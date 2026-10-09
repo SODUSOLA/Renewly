@@ -168,14 +168,15 @@ describe("DashboardPage", () => {
     expect(within(summary).getByRole("link", { name: /expired/i })).toHaveAttribute("href", "/documents?status=expired");
   });
 
-  it("invites the user to add a first document when there are none", async () => {
+  it("helps a new user choose what to track first when there are no documents", async () => {
     signedIn({
-      "GET /vehicles": () => ({ body: [] }),
       "GET /dashboard": () => ({ body: { today: "2026-10-08", counts: { expired: 0, expiring_soon: 0, valid: 0, total: 0 }, expired: [], expiring_soon: [], valid: [] } }),
     });
     renderApp(<DashboardPage />, "/dashboard");
     expect(await screen.findByRole("heading", { name: "No documents yet" })).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Add your first document" })).toHaveAttribute("href", "/documents?new=1");
+    expect(screen.getByRole("link", { name: "Car insurance" })).toHaveAttribute("href", "/documents?new=insurance");
+    expect(screen.getByRole("link", { name: "Driver's licence" })).toHaveAttribute("href", "/documents?new=driver_license");
+    expect(screen.getByRole("link", { name: "start with a blank form" })).toHaveAttribute("href", "/documents?new=1");
   });
 
   it("offers a retry when loading fails", async () => {

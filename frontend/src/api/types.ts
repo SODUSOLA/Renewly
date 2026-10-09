@@ -11,6 +11,21 @@ export type DocumentStatus = "valid" | "expiring_soon" | "expired";
 
 export type ReminderStyle = "each" | "digest";
 
+// What the user has seen or done in the getting-started journey (remembered by the server).
+export interface Onboarding {
+  tour_done?: boolean;
+  checklist_dismissed?: boolean;
+  settings_reviewed?: boolean;
+}
+
+// How much of the app the user has used so far (counted from their real data).
+export interface OnboardingProgress {
+  documents: number;
+  vehicles: number;
+  renewals: number;
+  renewals_with_cost: number;
+}
+
 export interface User {
   id: string;
   email: string;
@@ -18,6 +33,7 @@ export interface User {
   timezone: string;
   reminder_style: ReminderStyle;
   report_emails: boolean;
+  onboarding: Onboarding;
   created_at: string;
 }
 

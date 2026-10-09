@@ -1,7 +1,7 @@
 import { useQueryClient } from "@tanstack/react-query";
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { api, refreshAccessToken, setUnauthorizedHandler, tokenStore } from "../api/client";
-import type { ReminderStyle, User } from "../api/types";
+import type { Onboarding, ReminderStyle, User } from "../api/types";
 
 interface AuthState {
   user: User | null;
@@ -13,6 +13,8 @@ interface AuthState {
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
   updateProfile: (changes: ProfileChanges) => Promise<void>;
+  // Remember a getting-started milestone (e.g. the tour was seen) on the server.
+  updateOnboarding: (changes: Onboarding) => Promise<void>;
 }
 
 // The settings a user can change about themselves (email is fixed).
@@ -129,9 +131,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(await api<User>("/auth/me", { method: "PATCH", body: changes }));
   }, []);
 
+  const updateOnboarding = useCallback(async (changes: Onboarding) => {
+    setUser(await api<User>("/auth/me/onboarding", { method: "PATCH", body: changes }));
+  }, []);
+
   const value = useMemo(
-    () => ({ user, loading, sessionExpired, login, register, logout, updateProfile }),
-    [user, loading, sessionExpired, login, register, logout, updateProfile],
+    () => ({ user, loading, sessionExpired, login, register, logout, updateProfile, updateOnboarding }),
+    [user, loading, sessionExpired, login, register, logout, updateProfile, updateOnboarding],
   );
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

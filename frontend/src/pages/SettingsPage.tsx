@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
+import { useNavigate } from "react-router-dom";
 import { fieldErrors } from "../api/client";
 import type { ReminderStyle } from "../api/types";
 import { useAuth, type ProfileChanges } from "../auth/AuthContext";
@@ -21,7 +22,8 @@ const STYLES: { value: ReminderStyle; title: string; description: string }[] = [
 
 // Account settings: how and when reminders arrive, plus name and timezone.
 export function SettingsPage() {
-  const { user, updateProfile } = useAuth();
+  const { user, updateProfile, updateOnboarding } = useAuth();
+  const navigate = useNavigate();
   const [fullName, setFullName] = useState(user?.full_name ?? "");
   const [timezone, setTimezone] = useState(user?.timezone ?? "Africa/Lagos");
   const [style, setStyle] = useState<ReminderStyle>(user?.reminder_style ?? "each");
@@ -30,6 +32,12 @@ export function SettingsPage() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const [nameError, setNameError] = useState<string>();
+
+  // Looking at this page counts as having reviewed how reminders arrive (a getting-started step).
+  const reviewed = user?.onboarding.settings_reviewed === true;
+  useEffect(() => {
+    if (user && !reviewed) updateOnboarding({ settings_reviewed: true }).catch(() => undefined);
+  }, [user?.id, reviewed]);
 
   if (!user) return null;
 
@@ -140,6 +148,26 @@ export function SettingsPage() {
           </button>
         </div>
       </form>
+
+      <section className="card section-gap" aria-labelledby="help-title">
+        <h2 id="help-title">Getting started</h2>
+        <p className="muted small">New here, or want a refresher? Replay the tour or bring back the checklist.</p>
+        <div className="actions actions-start">
+          <button type="button" className="btn btn-ghost" onClick={() => navigate("/dashboard?tour=1")}>
+            Take the tour again
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost"
+            onClick={async () => {
+              await updateOnboarding({ checklist_dismissed: false }).catch(() => undefined);
+              navigate("/dashboard");
+            }}
+          >
+            Show the checklist
+          </button>
+        </div>
+      </section>
     </>
   );
 }

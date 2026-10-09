@@ -19,7 +19,7 @@ from app.core.security import (
     verify_password,
 )
 from app.modules.auth.models import PasswordResetToken, RefreshToken, User
-from app.modules.auth.schemas import ProfileUpdate
+from app.modules.auth.schemas import OnboardingUpdate, ProfileUpdate
 
 RESET_TOKEN_TTL = timedelta(hours=1)
 # Two tabs can refresh at the same instant with the same cookie. A token rotated this
@@ -298,5 +298,13 @@ def update_profile(db: Session, user: User, data: ProfileUpdate) -> User:
     """Apply the fields the client sent (name, timezone, reminder style) and return the user."""
     for field, value in data.model_dump(exclude_unset=True).items():
         setattr(user, field, value.strip() if isinstance(value, str) else value)
+    db.commit()
+    return user
+
+
+# func to remember how far through the getting-started journey a user is
+def update_onboarding(db: Session, user: User, data: OnboardingUpdate) -> User:
+    """Merge the flags the client sent into the user's onboarding state and return the user."""
+    user.onboarding = {**user.onboarding, **data.model_dump(exclude_unset=True)}
     db.commit()
     return user

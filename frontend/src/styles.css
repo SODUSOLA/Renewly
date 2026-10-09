@@ -1109,3 +1109,245 @@ legend {
     width: 100%;
   }
 }
+
+
+/* ---------- getting started: welcome, tour, checklist, quick-add ---------- */
+
+.value-props {
+  list-style: none;
+  margin: 14px 0 0;
+  padding: 0;
+  font-size: 0.9375rem;
+  color: var(--muted);
+}
+.value-props li {
+  padding-left: 22px;
+  margin-bottom: 4px;
+  position: relative;
+}
+.value-props li::before {
+  content: "✓";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.welcome-steps {
+  list-style: none;
+  margin: 16px 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.welcome-steps li {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+.welcome-steps strong {
+  display: block;
+}
+.welcome-number {
+  flex: none;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.quick-add {
+  margin: 14px 0 4px;
+}
+.quick-add-heading {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+.chip-links {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+}
+.chip-link {
+  display: inline-block;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-weight: 500;
+}
+.chip-link:hover {
+  border-color: var(--accent);
+  color: var(--text);
+  background: var(--valid-bg);
+}
+
+.getting-started {
+  margin-bottom: 20px;
+}
+.getting-started-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+.getting-started-head p {
+  margin: 2px 0 0;
+}
+.getting-started-actions {
+  display: flex;
+  gap: 8px;
+}
+.progress {
+  height: 8px;
+  margin: 14px 0 6px;
+  background: var(--surface-2);
+  border-radius: 999px;
+  overflow: hidden;
+}
+.progress span {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+  border-radius: 999px;
+  transition: width 0.3s;
+}
+.progress-label {
+  margin: 0 0 8px;
+}
+.checklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.checklist li {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 0;
+  border-top: 1px solid var(--border);
+}
+.check-mark {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.8125rem;
+  font-weight: 700;
+  color: var(--accent-contrast);
+}
+.check-done .check-mark {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.check-done .check-text strong {
+  color: var(--muted);
+  font-weight: 500;
+}
+.check-next .check-mark {
+  border-color: var(--accent);
+}
+.check-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.check-tag {
+  align-self: flex-start;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--soon-fg);
+  background: var(--soon-bg);
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+
+.flash {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.section-gap {
+  margin-top: 20px;
+}
+
+/* the tour: dim everything, light up one element, explain it */
+.tour {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+}
+.tour-backdrop {
+  position: fixed;
+  inset: 0;
+}
+.tour-spot {
+  position: fixed;
+  border-radius: 10px;
+  box-shadow: 0 0 0 9999px rgba(10, 15, 14, 0.62);
+  outline: 2px solid var(--accent);
+  pointer-events: none;
+}
+.tour-spot-glide {
+  transition: top 0.2s, left 0.2s, width 0.2s, height 0.2s;
+}
+.tour-card {
+  position: fixed;
+  background: var(--surface);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 16px 18px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+.tour-card h2 {
+  margin-bottom: 6px;
+}
+.tour-card p {
+  margin: 0 0 12px;
+}
+.tour-card .tour-progress {
+  margin-bottom: 4px;
+}
+.tour-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.tour-nav {
+  display: flex;
+  gap: 8px;
+}
+.tour-card-sheet {
+  left: 12px;
+  right: 12px;
+  bottom: 12px;
+  width: auto;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tour-spot-glide,
+  .progress span {
+    transition: none;
+  }
+}

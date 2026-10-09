@@ -12,6 +12,7 @@ import { ReminderCalendar } from "./ReminderCalendar";
 // shows any field errors the server sends back next to the right input.
 export function DocumentForm({
   initial,
+  preset,
   vehicles,
   submitting,
   serverError,
@@ -20,6 +21,8 @@ export function DocumentForm({
   onCancel,
 }: {
   initial?: Doc;
+  // Starting values for a NEW document (from a quick-start shortcut); ignored when editing.
+  preset?: { type: DocumentType; title: string };
   vehicles: Vehicle[];
   submitting: boolean;
   serverError: unknown;
@@ -27,9 +30,9 @@ export function DocumentForm({
   onSubmit: (input: DocInput) => void;
   onCancel: () => void;
 }) {
-  const [type, setType] = useState<DocumentType>(initial?.type ?? "insurance");
+  const [type, setType] = useState<DocumentType>(initial?.type ?? preset?.type ?? "insurance");
   const [customLabel, setCustomLabel] = useState(initial?.custom_type_label ?? "");
-  const [title, setTitle] = useState(initial?.title ?? "");
+  const [title, setTitle] = useState(initial?.title ?? preset?.title ?? "");
   const [vehicleId, setVehicleId] = useState(initial?.vehicle_id ?? "");
   const [documentNumber, setDocumentNumber] = useState(initial?.document_number ?? "");
   const [issueDate, setIssueDate] = useState(initial?.issue_date ?? "");

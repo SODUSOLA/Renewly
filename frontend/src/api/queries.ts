@@ -2,7 +2,7 @@
 // affect so every screen shows fresh data.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./client";
-import type { CostReport, Dashboard, Doc, DocInput, DocumentStatus, DocumentType, RenewInput, Renewal, RenewalChanges, Vehicle, VehicleInput } from "./types";
+import type { CostReport, Dashboard, OnboardingProgress, Doc, DocInput, DocumentStatus, DocumentType, RenewInput, Renewal, RenewalChanges, Vehicle, VehicleInput } from "./types";
 
 export const keys = {
   dashboard: ["dashboard"] as const,
@@ -11,6 +11,7 @@ export const keys = {
   renewals: (id: string) => ["documents", id, "renewals"] as const,
   vehicles: ["vehicles"] as const,
   reports: ["reports"] as const,
+  progress: ["onboarding", "progress"] as const,
 };
 
 export function useDashboard() {
@@ -49,6 +50,7 @@ function useRefreshDocuments() {
     client.invalidateQueries({ queryKey: keys.documents }),
     client.invalidateQueries({ queryKey: keys.dashboard }),
     client.invalidateQueries({ queryKey: keys.reports }),
+    client.invalidateQueries({ queryKey: keys.progress }),
   ]);
 }
 
@@ -88,7 +90,7 @@ export function useCreateVehicle() {
   const client = useQueryClient();
   return useMutation({
     mutationFn: (input: VehicleInput) => api<Vehicle>("/vehicles", { method: "POST", body: input }),
-    onSuccess: () => client.invalidateQueries({ queryKey: keys.vehicles }),
+    onSuccess: () => Promise.all([client.invalidateQueries({ queryKey: keys.vehicles }), client.invalidateQueries({ queryKey: keys.progress })]),
   });
 }
 
@@ -109,6 +111,7 @@ export function useDeleteVehicle() {
       client.invalidateQueries({ queryKey: keys.vehicles }),
       client.invalidateQueries({ queryKey: keys.documents }),
       client.invalidateQueries({ queryKey: keys.dashboard }),
+      client.invalidateQueries({ queryKey: keys.progress }),
     ]),
   });
 }
@@ -131,6 +134,12 @@ export function useUpdateRenewal(documentId: string) {
       Promise.all([
         client.invalidateQueries({ queryKey: keys.renewals(documentId) }),
         client.invalidateQueries({ queryKey: keys.reports }),
+        client.invalidateQueries({ queryKey: keys.progress }),
       ]),
   });
+}
+
+// How far the user has got through the getting-started journey (document/vehicle/renewal counts).
+export function useOnboardingProgress() {
+  return useQuery({ queryKey: keys.progress, queryFn: () => api<OnboardingProgress>("/onboarding/progress") });
 }

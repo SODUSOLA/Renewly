@@ -1,13 +1,17 @@
-import { useSearchParams } from "react-router-dom";
+import { Link, useSearchParams } from "react-router-dom";
 import { useState } from "react";
 import type { DocumentStatus, DocumentType } from "../api/types";
 import { useCreateDocument, useDocuments, useVehicles } from "../api/queries";
+import { useAuth } from "../auth/AuthContext";
 import { DocumentForm } from "../components/DocumentForm";
 import { DocumentRow } from "../components/DocumentRow";
 import { ErrorNotice } from "../components/ErrorNotice";
 import { Modal } from "../components/Modal";
+import { QuickAdd } from "../components/QuickAdd";
 import { Spinner } from "../components/Spinner";
-import { STATUS_META, TYPE_OPTIONS } from "../lib/status";
+import { todayIn } from "../lib/calendar";
+import { firstReminderMessage } from "../lib/onboarding";
+import { STATUS_META, TYPE_OPTIONS, quickAddFor } from "../lib/status";
 
 // All documents, filterable by status, type and vehicle (filters live in the URL
 // so a filtered view can be bookmarked or linked from the dashboard).
@@ -16,7 +20,12 @@ export function DocumentsPage() {
   const status = (params.get("status") ?? "") as DocumentStatus | "";
   const type = (params.get("type") ?? "") as DocumentType | "";
   const vehicleId = params.get("vehicle_id") ?? "";
-  const [adding, setAdding] = useState(params.get("new") === "1");
+  const { user } = useAuth();
+  // ?new=1 opens a blank form; ?new=insurance opens it set up for that kind of document.
+  const [adding, setAdding] = useState(Boolean(params.get("new")));
+  const [preset] = useState(() => quickAddFor(params.get("new")));
+  // Right after saving: when the first email will arrive (the moment that makes the app feel real).
+  const [flash, setFlash] = useState<string | null>(null);
 
   const documents = useDocuments({ status, type, vehicle_id: vehicleId || undefined });
   const vehicles = useVehicles();
@@ -49,6 +58,23 @@ export function DocumentsPage() {
           + Add document
         </button>
       </div>
+
+      {flash && (
+        <div className="notice notice-success flash" role="status">
+          <p>
+            {flash}
+            {user && !user.onboarding.settings_reviewed && (
+              <>
+                {" "}
+                <Link to="/settings">Choose how you get reminders</Link>
+              </>
+            )}
+          </p>
+          <button type="button" className="btn btn-ghost btn-sm" onClick={() => setFlash(null)} aria-label="Dismiss">
+            ✕
+          </button>
+        </div>
+      )}
 
       <div className="filters" role="group" aria-label="Filters">
         <label>
@@ -99,11 +125,7 @@ export function DocumentsPage() {
         <div className="empty">
           <h2>{filtered ? "No documents match" : "No documents yet"}</h2>
           <p className="muted">{filtered ? "Try different filters." : "Add a document and we'll remind you before it expires."}</p>
-          {!filtered && (
-            <button type="button" className="btn btn-primary" onClick={() => setAdding(true)}>
-              Add your first document
-            </button>
-          )}
+          {!filtered && <QuickAdd />}
         </div>
       ) : (
         <ul className="doc-list" aria-label="Documents">
@@ -121,7 +143,15 @@ export function DocumentsPage() {
             serverError={create.error}
             submitLabel="Add document"
             onCancel={closeAdd}
-            onSubmit={(input) => create.mutate(input, { onSuccess: closeAdd })}
+            preset={preset}
+            onSubmit={(input) =>
+              create.mutate(input, {
+                onSuccess: (doc) => {
+                  closeAdd();
+                  if (user) setFlash(firstReminderMessage(doc, todayIn(user.timezone), user.timezone));
+                },
+              })
+            }
           />
         </Modal>
       )}

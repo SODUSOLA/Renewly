@@ -65,6 +65,7 @@ class UserRead(BaseModel):
     timezone: str
     reminder_style: ReminderStyle
     report_emails: bool
+    onboarding: dict[str, bool]
     created_at: datetime
 
 
@@ -118,6 +119,31 @@ class ProfileUpdate(BaseModel):
     @model_validator(mode="after")
     def no_explicit_nulls(self) -> "ProfileUpdate":
         """Reject `{"timezone": null}` and friends: omit the field instead."""
+        for name in self.model_fields_set:
+            if getattr(self, name) is None:
+                raise ValueError(f"{name} cannot be null")
+        return self
+
+
+# class for the body of PATCH /auth/me/onboarding
+class OnboardingUpdate(BaseModel):
+    """What the web app records about the getting-started journey. Unknown keys are rejected.
+
+    - `tour_done`: the welcome and tour have been seen (finished or skipped), so they are not shown again.
+    - `checklist_dismissed`: the user hid the getting-started checklist.
+    - `settings_reviewed`: the user has looked at how they are reminded (Settings).
+    """
+
+    model_config = ConfigDict(extra="forbid")
+
+    tour_done: bool | None = None
+    checklist_dismissed: bool | None = None
+    settings_reviewed: bool | None = None
+
+    # func to block explicit nulls (omit a flag to leave it unchanged)
+    @model_validator(mode="after")
+    def no_explicit_nulls(self) -> "OnboardingUpdate":
+        """Reject `{"tour_done": null}`: send true or false, or omit it."""
         for name in self.model_fields_set:
             if getattr(self, name) is None:
                 raise ValueError(f"{name} cannot be null")

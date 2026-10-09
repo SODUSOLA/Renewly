@@ -7,6 +7,7 @@ lapse.
 - Reminders go out at configurable offsets (default 90, 30, 14, 7 and 1 days before expiry), at 8am **in each user's own timezone**.
 - Each reminder is sent **exactly once**, even if the job runs many times or two workers collide.
 - Choose one email per reminder or a **single daily digest** of everything due (Settings page).
+- A guided **first-run journey**: welcome, optional tour, quick-start choices, a progress checklist, and a note of exactly when your first reminder will arrive.
 - A **spending report every six months** (January and July), a welcome email, and security emails when your password changes. Opt out of the report in Settings.
 - A dashboard groups documents as **expired / expiring soon / valid** with days left.
 - "Mark as renewed" moves the expiry forward, keeps a renewal history and re-arms the reminders.
@@ -135,6 +136,7 @@ docs/                     api.md, architecture.md, deployment.md
 - [docs/api.md](docs/api.md): every endpoint with examples, errors and rate limits
 - [docs/architecture.md](docs/architecture.md): how it fits together and why
 - [docs/deployment.md](docs/deployment.md): deploying to Railway, release checklist, operations
+- [docs/ux-journey.md](docs/ux-journey.md): the new-user journey (welcome, tour, quick-start, checklist) and why
 
 ## Troubleshooting
 

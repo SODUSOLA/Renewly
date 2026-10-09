@@ -42,7 +42,7 @@ export function renderApp(ui: ReactElement, route = "/") {
   );
 }
 
-export const USER = { id: "u1", email: "ada@example.com", full_name: "Ada Obi", timezone: "Africa/Lagos", reminder_style: "each", report_emails: true, created_at: "2026-10-01T00:00:00Z" };
+export const USER = { id: "u1", email: "ada@example.com", full_name: "Ada Obi", timezone: "Africa/Lagos", reminder_style: "each", report_emails: true, onboarding: {}, created_at: "2026-10-01T00:00:00Z" };
 
 export function makeDoc(overrides: Record<string, unknown> = {}) {
   return {
@@ -64,4 +64,6 @@ export const SIGNED_OUT = {
 export const SIGNED_IN = {
   "POST /auth/refresh": () => ({ body: { access_token: "tok", token_type: "bearer", expires_in: 900 } }),
   "GET /auth/me": () => ({ body: USER }),
+  // An established user by default (has a document), so the welcome and tour stay out of the way.
+  "GET /onboarding/progress": () => ({ body: { documents: 1, vehicles: 0, renewals: 0, renewals_with_cost: 0 } }),
 };

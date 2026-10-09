@@ -73,7 +73,7 @@ Emails are case-insensitive. Returns the user (never the password):
 ```json
 { "id": "…", "email": "ada@example.com", "full_name": "Ada Obi",
   "timezone": "Africa/Lagos", "reminder_style": "each", "report_emails": true,
-  "created_at": "2026-10-08T09:00:00Z" }
+  "onboarding": {}, "created_at": "2026-10-08T09:00:00Z" }
 ```
 Errors: `409` email already registered, `422` bad timezone or short password.
 
@@ -115,6 +115,11 @@ already used; the response also deletes the cookie. Rate limit: 60 / min per IP.
 ### `POST /auth/logout` → 204
 Revokes this device's login and deletes the cookie. Harmless when already signed out.
 Other devices stay signed in.
+
+### `PATCH /auth/me/onboarding` → 200
+Remember what the user has seen in the getting-started journey (used by the web app). Boolean flags only:
+`tour_done`, `checklist_dismissed`, `settings_reviewed`. Flags are merged with what is already stored; unknown keys,
+`null` and non-boolean values are `422`. The result is the updated user, whose `onboarding` object holds the flags.
 
 ### `POST /auth/forgot-password` → 202
 ```json
@@ -257,6 +262,15 @@ first, so the most overdue items lead the `expired` list. Soft-deleted documents
 are excluded.
 
 ---
+
+## Onboarding
+
+### `GET /onboarding/progress` → 200
+```json
+{ "documents": 2, "vehicles": 1, "renewals": 1, "renewals_with_cost": 0 }
+```
+Counts of the user's own live documents, vehicles and renewals (deleted documents and their renewals are not counted),
+which the web app turns into the getting-started checklist.
 
 ## Health
 
