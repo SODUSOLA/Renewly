@@ -121,3 +121,18 @@ def test_log_sender_logs_the_message_instead_of_sending(caplog):
     with caplog.at_level(logging.INFO):
         email_module.LogSender().send(MESSAGE)
     assert "no RESEND_API_KEY" in caplog.text and "ada@example.com" in caplog.text
+
+
+# ------------------------------------------------------- password-reset email
+def test_reset_email_links_to_the_frontend_when_configured(monkeypatch):
+    fake_settings(monkeypatch, frontend_url="https://app.example.com/")
+    message = email_module.build_password_reset_email("ada@example.com", "tok+/=&x")
+    assert "https://app.example.com/reset-password?token=tok%2B%2F%3D%26x" in message.text
+    assert 'href="https://app.example.com/reset-password?token=tok%2B%2F%3D%26x"' in message.html
+    assert message.to == "ada@example.com" and "Renewly" in message.subject
+
+
+def test_reset_email_falls_back_to_the_bare_token_without_a_frontend_url(monkeypatch):
+    fake_settings(monkeypatch, frontend_url="")
+    message = email_module.build_password_reset_email("ada@example.com", "tok123")
+    assert "tok123" in message.text and "http" not in message.text

@@ -22,6 +22,12 @@ class Settings(BaseSettings):
     # "text" is readable in a terminal; "json" is one object per line for log tools.
     log_format: str = "text"
     log_level: str = "INFO"
+    # Browser origins allowed to call the API (comma separated), e.g. the frontend's
+    # public URL. The Vite dev server is allowed by default.
+    cors_origins: str = "http://localhost:5173"
+    # Public URL of the web app, used for links in emails (e.g. password reset).
+    # Empty means emails carry the bare token instead of a link.
+    frontend_url: str = ""
     # Error tracking. Empty disables Sentry entirely.
     sentry_dsn: str = ""
     # Fraction of requests to trace for performance (0 = errors only).
@@ -31,6 +37,12 @@ class Settings(BaseSettings):
     # the Resend account owner, which is fine for first tests).
     email_from: str = "Expiry Tracker <onboarding@resend.dev>"
 
+
+    # func to get the allowed origins as a list
+    @property
+    def cors_origin_list(self) -> list[str]:
+        """`cors_origins` split on commas, trimmed, ignoring blanks and trailing slashes."""
+        return [o.strip().rstrip("/") for o in self.cors_origins.split(",") if o.strip()]
 
     # func to accept the URL forms hosting providers hand out
     @field_validator("database_url")

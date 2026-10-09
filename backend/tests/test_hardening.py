@@ -197,6 +197,7 @@ def test_readiness_reports_ok_and_503_when_the_database_is_down(client):
     finally:
         app.dependency_overrides.pop(get_db)
     assert res.status_code == 503 and res.json() == {"status": "unavailable"}
+    assert "db down" not in res.text  # the cause is logged, never returned
 
 
 # ------------------------------------------------------------------- config
@@ -255,3 +256,37 @@ def test_sentry_is_off_without_a_dsn_and_privacy_safe_with_one(monkeypatch):
     assert calls[0]["send_default_pii"] is False
     assert calls[0]["max_request_body_size"] == "never"
     assert calls[0]["environment"] == "development"
+
+
+# --------------------------------------------------------------------- CORS
+def test_cors_allows_the_configured_frontend_origin_only(client):
+    ok = client.options(
+        "/auth/login",
+        headers={
+            "Origin": "http://localhost:5173",
+            "Access-Control-Request-Method": "POST",
+            "Access-Control-Request-Headers": "authorization,content-type",
+        },
+    )
+    assert ok.status_code == 200
+    assert ok.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "authorization" in ok.headers["access-control-allow-headers"].lower()
+
+    denied = client.options(
+        "/auth/login",
+        headers={"Origin": "https://evil.example", "Access-Control-Request-Method": "POST"},
+    )
+    assert "access-control-allow-origin" not in denied.headers
+
+
+def test_cors_headers_are_present_even_on_errors_and_expose_helpful_headers(client):
+    res = client.get("/auth/me", headers={"Origin": "http://localhost:5173"})
+    assert res.status_code == 401
+    assert res.headers["access-control-allow-origin"] == "http://localhost:5173"
+    assert "x-request-id" in res.headers["access-control-expose-headers"].lower()
+
+
+def test_cors_origin_list_parsing():
+    s = Settings(_env_file=None, database_url="x", secret_key="k",
+                 cors_origins=" https://a.example/ , ,https://b.example ")
+    assert s.cors_origin_list == ["https://a.example", "https://b.example"]
